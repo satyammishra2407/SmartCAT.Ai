@@ -1,0 +1,9 @@
+free_text,scheme,code,tier,notes
+Wood Frame,RMS,RMS-2,2,Wood
+Concrete,RMS,RMS-4,4,Reinforced concrete
+Steel,RMS,RMS-3,3,Steel moment frame
+Masonry,RMS,RMS-2,2,Masonry bearing
+Euro Masonry,EURO,C2M,Masonry Euro class
+Euro RC,EURO,C3R,Reinforced concrete Euro
+Japan Wood,JPBldg,W00,Wood Japan
+Japan RC,JPBldg,RC,RC Japan

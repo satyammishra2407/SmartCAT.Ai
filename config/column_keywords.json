@@ -1,0 +1,12 @@
+{
+  "street": ["street", "addr", "address", "address1", "address_line", "location address", "risk address", "prop addr", "situation"],
+  "city": ["city", "town", "municipality", "locale"],
+  "state": ["state", "province", "region", "prefecture", "territory"],
+  "postal_code": ["zip", "zipcode", "postal", "post code", "postcode"],
+  "country": ["country", "nation"],
+  "occupancy": ["occupancy", "occ", "building use", "use", "atc occ", "property type"],
+  "construction": ["construction", "const", "building type", "structural", "frame", "atc const"],
+  "tiv": ["tiv", "total insured value", "total insurable value", "sum insured", "building value", "total value"],
+  "latitude": ["lat", "latitude", "y_coord"],
+  "longitude": ["lon", "lng", "long", "longitude", "x_coord"]
+}

@@ -1,0 +1,1 @@
+LocationID	Address1	Address2	City	State	PostalCode	Country	Latitude	Longitude	ConstructionCode	OccupancyCode	TIV_Building	TIV_Contents	TIV_BI	YearBuilt	NumStories

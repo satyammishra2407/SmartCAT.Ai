@@ -1,0 +1,7 @@
+country_iso2,pattern,zip_lookup_available
+US,^\d{5}(-\d{4})?$,yes
+CA,^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$,partial
+GB,^[A-Z]{1,2}\d[A-Z\d]? ?\d[A-Z]{2}$,partial
+JP,^\d{3}-?\d{4}$,partial
+DE,^\d{5}$,partial
+FR,^\d{5}$,partial

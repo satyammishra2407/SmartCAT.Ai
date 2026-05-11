@@ -1,0 +1,12 @@
+free_text,scheme,code,description
+Office Building,RMS_IND,6,General commercial office
+offise bilding,RMS_IND,6,Fuzzy office
+School,RMS_IND,11,Educational
+Hospital,RMS_IND,8,Healthcare
+Retail,RMS_IND,5,Retail trade
+Warehouse,RMS_IND,16,Industrial warehouse
+Gas Station,RMS_IND,5,Retail fuel
+Residential,RMS_IND,1,Single family residential
+Multi-Family,RMS_IND,2,Multi-family residential
+Hotel,RMS_IND,7,Hospitality
+Manufacturing,RMS_IND,15,Industrial manufacturing

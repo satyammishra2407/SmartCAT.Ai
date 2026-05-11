@@ -1,0 +1,1 @@
+AccountID	LocationID	PolicyNumber	Limit_Occurrence	Limit_Aggregate	Deductible_EQ	Deductible_Wind	Deductible_Flood	Participation
