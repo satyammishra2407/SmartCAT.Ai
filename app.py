@@ -549,6 +549,33 @@ def _inject_exl_styles() -> None:
             font-weight: 700 !important;
             letter-spacing: -0.02em !important;
         }}
+
+        /* ── Data tables (light grey, black text) ── */
+        div[data-testid="stDataFrame"] {{
+            border: 1px solid {EXL_GREY_LIGHT} !important;
+            border-radius: 6px !important;
+            overflow: hidden !important;
+            --gdg-bg-cell: {EXL_WHITE};
+            --gdg-bg-header: {EXL_GREY_SECTION};
+            --gdg-bg-header-has-focus: #E0E0E0;
+            --gdg-bg-header-hovered: #E0E0E0;
+            --gdg-text-dark: {EXL_BLACK};
+            --gdg-text-header: {EXL_BLACK};
+            --gdg-text-header-selected: {EXL_ORANGE};
+            --gdg-text-medium: {EXL_GREY_DARK};
+            --gdg-border-color: {EXL_GREY_LIGHT};
+            --gdg-horizontal-border-color: {EXL_GREY_LIGHT};
+            --gdg-vertical-border-color: {EXL_GREY_LIGHT};
+        }}
+        div[data-testid="stDataFrame"] > div,
+        div[data-testid="stDataFrame"] [data-testid="glideDataEditor"],
+        div[data-testid="stDataFrame"] [class*="glide"] {{
+            background: {EXL_GREY_BG} !important;
+            color: {EXL_BLACK} !important;
+        }}
+        div[data-testid="stDataFrame"] canvas {{
+            background: {EXL_WHITE} !important;
+        }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -609,6 +636,29 @@ def _fmt_money(val: Any) -> str:
         return str(val)
 
 
+def _fmt_pct(val: Any) -> str:
+    if val is None or val == "":
+        return "—"
+    try:
+        return f"{float(val):g}%"
+    except (TypeError, ValueError):
+        return str(val)
+
+
+def _display_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Replace None/NaN with em-dash for clean table display."""
+    if df.empty:
+        return df
+    out = df.copy()
+    for col in out.columns:
+        out[col] = out[col].apply(
+            lambda v: "—"
+            if v is None or (isinstance(v, float) and pd.isna(v)) or str(v).strip().lower() in ("none", "nan", "")
+            else v
+        )
+    return out
+
+
 def _clear_all() -> None:
     st.session_state.slip_upload_nonce += 1
     st.session_state.slip_completed = False
@@ -621,11 +671,12 @@ def _clear_all() -> None:
 
 
 def _render_summary_metrics(rec: dict[str, Any]) -> None:
+    part = rec.get("participation_pct") or rec.get("coinsurance_pct")
     cols = st.columns(4)
     fields = [
         ("Total Insurable Value", _fmt_money(rec.get("tiv"))),
         ("Program Limit", _fmt_money(rec.get("limit_of_liability"))),
-        ("Participation", f"{rec.get('participation_pct') or rec.get('coinsurance_pct') or '—'}%"),
+        ("Participation", _fmt_pct(part)),
         ("Confidence Score", f"{rec.get('confidence_score', 0)}%"),
     ]
     for col, (label, val) in zip(cols, fields):
@@ -637,10 +688,10 @@ def _render_summary_metrics(rec: dict[str, Any]) -> None:
         <div class="exl-detail-grid">
             <div class="exl-detail-item"><strong>Named Insured:</strong> {rec.get('named_insured') or '—'}</div>
             <div class="exl-detail-item"><strong>SIR / Excess:</strong> {_fmt_money(rec.get('sir'))} / {_fmt_money(rec.get('excess_of'))}</div>
-            <div class="exl-detail-item"><strong>Extraction Method:</strong> {rec.get('extraction_method', '—')}</div>
             <div class="exl-detail-item"><strong>Policy Period:</strong> {rec.get('effective_date') or '—'} → {rec.get('expiration_date') or '—'}</div>
             <div class="exl-detail-item"><strong>Blanket Deductible:</strong> {_fmt_money(rec.get('blanket_deductible'))}</div>
             <div class="exl-detail-item"><strong>Min / Max Deductible:</strong> {_fmt_money(rec.get('min_deductible'))} / {_fmt_money(rec.get('max_deductible'))}</div>
+            <div class="exl-detail-item"><strong>Loss History:</strong> {rec.get('loss_history') or '—'}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -794,7 +845,7 @@ def main() -> None:
                     df_lim = pd.DataFrame(rec.get("limits_sublimits") or [])
                     if not df_lim.empty:
                         show = [c for c in ["row_type", "peril", "region", "description", "amount", "status", "basis"] if c in df_lim.columns]
-                        st.dataframe(df_lim[show], use_container_width=True, hide_index=True)
+                        st.dataframe(_display_df(df_lim[show]), use_container_width=True, hide_index=True)
                     else:
                         st.warning("No limit or sublimit rows were extracted from this slip.")
 
@@ -802,14 +853,14 @@ def main() -> None:
                     df_ded = pd.DataFrame(rec.get("deductibles") or [])
                     if not df_ded.empty:
                         show = [c for c in ["peril", "region", "hazard_zone", "coverage_type", "deductible_type", "amount", "pct", "min_amount", "max_amount", "basis"] if c in df_ded.columns]
-                        st.dataframe(df_ded[show], use_container_width=True, hide_index=True)
+                        st.dataframe(_display_df(df_ded[show]), use_container_width=True, hide_index=True)
                     else:
                         st.warning("No deductible rows were extracted from this slip.")
 
                 with tabs[2]:
                     df_w = pd.DataFrame(rec.get("waiting_periods") or [])
                     if not df_w.empty:
-                        st.dataframe(df_w, use_container_width=True, hide_index=True)
+                        st.dataframe(_display_df(df_w), use_container_width=True, hide_index=True)
                     else:
                         st.caption("No waiting periods identified.")
 
@@ -817,7 +868,7 @@ def main() -> None:
                     df_cat = pd.DataFrame(rec.get("cat_peril_summary") or [])
                     if not df_cat.empty:
                         st.dataframe(
-                            df_cat[["peril_code", "peril_name", "primary_limit", "limit_status", "sublimit_count", "deductible_count"]],
+                            _display_df(df_cat[["peril_code", "peril_name", "primary_limit", "limit_status", "sublimit_count", "deductible_count"]]),
                             use_container_width=True,
                             hide_index=True,
                         )

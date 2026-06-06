@@ -1,6 +1,7 @@
 """Combine regex + table parsing into structured slip record."""
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from modules.module3_slip_extraction import pattern_library as pl
@@ -75,6 +76,27 @@ def extract_from_text(text: str, source_file: str = "", extraction_method: str =
     }
 
 
+def _clean_named_insured(raw: str) -> str | None:
+    if not raw:
+        return None
+    text = re.sub(r"\s+", " ", raw).strip()
+    m = re.search(
+        r"(?:will be|is)\s+([A-Za-z0-9][A-Za-z0-9\s,\.&\-'()]{2,80}?(?:\s+LP|\s+LLC|\s+Inc\.?)?)",
+        text,
+        re.I,
+    )
+    if m:
+        return m.group(1).strip()[:120]
+    if len(text) > 90:
+        m2 = re.search(
+            r"([A-Z][A-Za-z0-9\s,\.&\-'()]{2,60}(?:\s+LP|\s+LLC|\s+Inc\.?)?)",
+            text,
+        )
+        if m2:
+            return m2.group(1).strip()[:120]
+    return text[:120]
+
+
 def _extract_summary(blob: str, source_file: str, extraction_method: str) -> dict[str, Any]:
     out: dict[str, Any] = {
         "source_file": source_file,
@@ -109,9 +131,11 @@ def _extract_summary(blob: str, source_file: str, extraction_method: str) -> dic
                 out["tiv_currency"] = m.group(2).upper()
             break
 
-    m = pl.NAMED_INSURED.search(blob)
-    if m:
-        out["named_insured"] = m.group(1).strip()[:200]
+    for pat in pl.NAMED_INSURED_PATTERNS:
+        m = pat.search(blob)
+        if m:
+            out["named_insured"] = _clean_named_insured(m.group(1).strip())
+            break
 
     m = pl.EFFECTIVE_DATE.search(blob)
     if m:
@@ -168,10 +192,10 @@ def _extract_summary(blob: str, source_file: str, extraction_method: str) -> dic
 
     m = pl.MIN_DED.search(blob)
     if m:
-        out["min_deductible"] = pl.clean_money(m.group(1))
+        out["min_deductible"] = pl.parse_money_token(m.group(0)) or pl.clean_money(m.group(1))
     m = pl.MAX_DED.search(blob)
     if m:
-        out["max_deductible"] = pl.clean_money(m.group(1))
+        out["max_deductible"] = pl.parse_money_token(m.group(0)) or pl.clean_money(m.group(1))
 
     m = pl.POLICY_FORM.search(blob)
     if m:

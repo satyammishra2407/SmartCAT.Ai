@@ -18,7 +18,7 @@ _PROMPT = (
 )
 
 
-def ocr_pdf_with_vision(pdf_path: Path, api_key: str, max_pages: int = 12, dpi: int = 180) -> str:
+def ocr_pdf_with_vision(pdf_path: Path, api_key: str, max_pages: int = 12, dpi: int = 150) -> str:
     if not api_key:
         return ""
     try:
@@ -51,7 +51,7 @@ def ocr_pdf_with_vision(pdf_path: Path, api_key: str, max_pages: int = 12, dpi: 
                             {"type": "text", "text": _PROMPT},
                             {
                                 "type": "image_url",
-                                "image_url": {"url": f"data:image/png;base64,{b64}", "detail": "high"},
+                                "image_url": {"url": f"data:image/png;base64,{b64}", "detail": "low"},
                             },
                         ],
                     }

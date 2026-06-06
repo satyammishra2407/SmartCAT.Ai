@@ -424,13 +424,21 @@ def _looks_like_deductible_row(desc: str) -> bool:
 
 
 def _extract_min(text: str) -> str | None:
-    m = re.search(r"min(?:imum)?\s*(?:deductible\s*)?(?:of\s*)?(?:US)?\$?\s*([\d,]+)", text, re.I)
-    return m.group(1).replace(",", "") if m else None
+    m = re.search(r"min(?:imum)?[^$\n]{0,30}?((?:US)?\$?\s*[\d,]+(?:\.\d+)?\s*K?)", text, re.I)
+    if not m:
+        return None
+    from modules.module3_slip_extraction.pattern_library import parse_money_token
+
+    return parse_money_token(m.group(1))
 
 
 def _extract_max(text: str) -> str | None:
-    m = re.search(r"max(?:imum)?\s*(?:deductible\s*)?(?:of\s*)?(?:US)?\$?\s*([\d,]+)", text, re.I)
-    return m.group(1).replace(",", "") if m else None
+    m = re.search(r"max(?:imum)?[^$\n]{0,30}?((?:US)?\$?\s*[\d,]+(?:\.\d+)?\s*K?)", text, re.I)
+    if not m:
+        return None
+    from modules.module3_slip_extraction.pattern_library import parse_money_token
+
+    return parse_money_token(m.group(1))
 
 
 def _code_name(code: str) -> str:

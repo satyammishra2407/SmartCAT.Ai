@@ -82,14 +82,14 @@ def _load_pdf(path: Path, openai_key: str | None = None) -> tuple[str, str]:
         return full_text, "text_pdf"
 
     ocr_text = _ocr_pdf_pages(path)
-    if ocr_text.strip() and len(ocr_text.strip()) > len(full_text.strip()):
+    if ocr_text.strip() and not text_is_sparse(ocr_text, page_count):
         return ocr_text, "ocr_pdf"
 
-    if openai_key:
+    if openai_key and text_is_sparse(ocr_text or full_text, page_count):
         from modules.module3_slip_extraction.vision_ocr import ocr_pdf_with_vision
 
         vision_text = ocr_pdf_with_vision(path, openai_key)
-        if vision_text.strip():
+        if vision_text.strip() and len(vision_text.strip()) > len((ocr_text or full_text).strip()):
             return vision_text, "vision_ocr"
 
     if ocr_text.strip():
@@ -97,32 +97,54 @@ def _load_pdf(path: Path, openai_key: str | None = None) -> tuple[str, str]:
     return full_text, "text_pdf"
 
 
-def _ocr_pdf_pages(path: Path, dpi: int = 200) -> str:
+def _ocr_single_page(page_index: int, path: Path, dpi: int) -> tuple[int, str]:
+    try:
+        import fitz
+        from PIL import Image
+
+        from modules.module3_slip_extraction.ocr_engine import image_to_text
+
+        doc = fitz.open(str(path))
+        page = doc[page_index]
+        pix = page.get_pixmap(dpi=dpi)
+        img = Image.open(io.BytesIO(pix.tobytes("png")))
+        return page_index, image_to_text(img)
+    except Exception as e:
+        logger.debug("Page OCR failed page=%s: %s", page_index, e)
+        return page_index, ""
+
+
+def _ocr_pdf_pages(path: Path, dpi: int = 150) -> str:
     try:
         import fitz
     except ImportError:
         logger.warning("PyMuPDF not installed — cannot OCR scanned PDF %s", path.name)
         return ""
 
-    from modules.module3_slip_extraction.ocr_engine import image_to_text, tesseract_available
+    from modules.module3_slip_extraction.ocr_engine import tesseract_available
 
     if not tesseract_available():
         logger.info("Tesseract not available — skipping local OCR for %s", path.name)
+        return ""
 
-    parts: list[str] = []
-    try:
-        doc = fitz.open(path)
-        for page in doc:
-            pix = page.get_pixmap(dpi=dpi)
-            from PIL import Image
+    page_count = _pdf_page_count(path)
+    if page_count <= 0:
+        return ""
 
-            img = Image.open(io.BytesIO(pix.tobytes("png")))
-            t = image_to_text(img)
-            if t.strip():
-                parts.append(t)
-    except Exception as e:
-        logger.warning("PDF OCR failed for %s: %s", path.name, e)
-    return "\n\n".join(parts)
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    indexed: dict[int, str] = {}
+    workers = min(4, page_count)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(_ocr_single_page, i, path, dpi) for i in range(page_count)]
+        for fut in as_completed(futures):
+            idx, text = fut.result()
+            if text.strip():
+                indexed[idx] = text
+
+    if indexed:
+        return "\n\n".join(indexed[i] for i in sorted(indexed))
+    return ""
 
 
 def _load_docx(path: Path) -> str:

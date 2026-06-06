@@ -14,10 +14,18 @@ TIV_PATTERNS = [
     re.compile(r"(?:US)?\$([\d,]+(?:\.\d+)?)\s*(?:USD)?\s*(?:TIV|total\s+insurable)", re.I),
 ]
 
-NAMED_INSURED = re.compile(
-    r"(?:named\s+insured|insured)\s*[:]?\s*([A-Za-z0-9\s,\.&\-'()]+?)(?:\.|$|\n|TIV|Program)",
-    re.I,
-)
+NAMED_INSURED_PATTERNS = [
+    re.compile(
+        r"first\s+Named\s+Insured\s+will\s+be\s+([A-Za-z0-9\s,\.&\-'()]+?)(?:\.|$|\n|Property|Loss)",
+        re.I,
+    ),
+    re.compile(
+        r"(?:named\s+insured|insured)\s*[:]?\s*([A-Za-z0-9\s,\.&\-'()]{3,80}?)(?:\.|$|\n|TIV|Program|Property)",
+        re.I,
+    ),
+]
+
+NAMED_INSURED = NAMED_INSURED_PATTERNS[-1]
 
 EFFECTIVE_DATE = re.compile(
     r"(?:effective\s+date|inception\s+date|incept(?:ion)?)\s*[:]?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})",
@@ -108,8 +116,20 @@ SUBLIMIT_PERIL = re.compile(
     re.I,
 )
 
-MIN_DED = re.compile(r"min(?:imum)?\s*(?:deductible\s*)?(?:of\s*)?((?:US)?\$[\d,]+)", re.I)
-MAX_DED = re.compile(r"max(?:imum)?\s*(?:deductible\s*)?(?:of\s*)?((?:US)?\$[\d,]+)", re.I)
+MIN_DED = re.compile(r"min(?:imum)?\s*(?:deductible\s*)?(?:of\s*)?(?:US)?\$?\s*([\d,]+(?:\.\d+)?)\s*K?", re.I)
+MAX_DED = re.compile(r"max(?:imum)?\s*(?:deductible\s*)?(?:of\s*)?(?:US)?\$?\s*([\d,]+(?:\.\d+)?)\s*K?", re.I)
+
+
+def parse_money_token(s: str | None) -> str | None:
+    """Parse amounts including K suffix (e.g. min $100K)."""
+    if not s:
+        return None
+    raw = str(s).strip()
+    km = re.search(r"([\d,]+(?:\.\d+)?)\s*K\b", raw, re.I)
+    if km:
+        val = float(km.group(1).replace(",", "")) * 1000
+        return str(int(val)) if val == int(val) else str(val)
+    return clean_money(raw)
 
 
 def clean_money(s: str | None) -> str | None:
