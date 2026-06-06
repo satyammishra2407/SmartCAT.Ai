@@ -1,0 +1,103 @@
+{
+  "version": "1.0",
+  "description": "SmartCAT.AI slip extraction schema — aligned with Slip Coding.pdf and sample slips 2 & 4",
+  "policy_summary_fields": [
+    {"key": "source_file", "label": "Source File", "type": "string"},
+    {"key": "named_insured", "label": "Named Insured", "type": "string"},
+    {"key": "effective_date", "label": "Effective / Inception Date", "type": "date"},
+    {"key": "expiration_date", "label": "Expiration Date", "type": "date"},
+    {"key": "policy_period_raw", "label": "Policy Period (raw)", "type": "string"},
+    {"key": "tiv", "label": "Total Insurable Value (TIV)", "type": "money"},
+    {"key": "tiv_currency", "label": "TIV Currency", "type": "string", "default": "USD"},
+    {"key": "tiv_notes", "label": "TIV Notes", "type": "string"},
+    {"key": "limit_of_liability", "label": "Limit of Liability / Program Limit", "type": "money"},
+    {"key": "blanket_limit", "label": "Blanket Limit", "type": "money"},
+    {"key": "aggregate_limit", "label": "Annual / Policy Aggregate Limit", "type": "money"},
+    {"key": "part_of", "label": "Part Of (layer share)", "type": "money"},
+    {"key": "participation_pct", "label": "Participation / Line Size %", "type": "percent"},
+    {"key": "coinsurance_pct", "label": "Coinsurance %", "type": "percent"},
+    {"key": "excess_of", "label": "Excess Of / Attachment Point", "type": "money"},
+    {"key": "sir", "label": "Self-Insured Retention (SIR)", "type": "money"},
+    {"key": "blanket_deductible", "label": "Blanket Deductible", "type": "money"},
+    {"key": "min_deductible", "label": "Minimum Deductible", "type": "money"},
+    {"key": "max_deductible", "label": "Maximum Deductible", "type": "money"},
+    {"key": "policy_form", "label": "Policy Form", "type": "string"},
+    {"key": "loss_history", "label": "Loss History", "type": "string"},
+    {"key": "extraction_method", "label": "Extraction Method", "type": "string"},
+    {"key": "confidence_score", "label": "Confidence Score (0-100)", "type": "number"}
+  ],
+  "limits_sublimits_columns": [
+    {"key": "source_file", "label": "Source File"},
+    {"key": "row_type", "label": "Row Type", "enum": ["limit", "sublimit", "coverage_extension", "other"]},
+    {"key": "description", "label": "Description"},
+    {"key": "peril", "label": "Peril"},
+    {"key": "peril_code", "label": "Peril Code (RMS)"},
+    {"key": "region", "label": "Region / Zone"},
+    {"key": "amount", "label": "Amount"},
+    {"key": "currency", "label": "Currency"},
+    {"key": "status", "label": "Status", "enum": ["active", "included", "excluded", "n/a"]},
+    {"key": "basis", "label": "Basis", "enum": ["occurrence", "aggregate", "annual_aggregate", "policy_year", "other"]},
+    {"key": "parent_peril", "label": "Parent Peril (nested sublimit)"},
+    {"key": "rms_field", "label": "RMS Field Hint"}
+  ],
+  "deductibles_columns": [
+    {"key": "source_file", "label": "Source File"},
+    {"key": "peril", "label": "Peril"},
+    {"key": "peril_code", "label": "Peril Code (RMS)"},
+    {"key": "region", "label": "Region / Zone"},
+    {"key": "hazard_zone", "label": "Hazard Zone"},
+    {"key": "coverage_type", "label": "Coverage Type", "enum": ["combined", "property_damage", "time_element", "contents", "building", "bi", "other"]},
+    {"key": "deductible_type", "label": "Deductible Type", "enum": ["monetary", "percent", "hybrid", "waiting_period", "excluded"]},
+    {"key": "amount", "label": "Amount"},
+    {"key": "pct", "label": "Percent"},
+    {"key": "min_amount", "label": "Minimum"},
+    {"key": "max_amount", "label": "Maximum"},
+    {"key": "basis", "label": "Application Basis", "enum": ["per_occurrence", "per_location", "per_building", "per_unit", "policy_year", "other"]},
+    {"key": "waiting_hours", "label": "Waiting Period (hours)"},
+    {"key": "notes", "label": "Notes"},
+    {"key": "rms_field", "label": "RMS Field Hint"}
+  ],
+  "waiting_period_columns": [
+    {"key": "source_file", "label": "Source File"},
+    {"key": "coverage", "label": "Coverage"},
+    {"key": "hours", "label": "Hours"},
+    {"key": "days", "label": "Days"},
+    {"key": "raw", "label": "Raw Text"}
+  ],
+  "cat_perils": [
+    {"code": "EQ", "names": ["earth movement", "earthquake", "seismic", "eq"]},
+    {"code": "WS", "names": ["named storm", "named windstorm", "windstorm", "hurricane", "typhoon", "cyclone", "ws"]},
+    {"code": "FL", "names": ["flood", "sturmflut", "fl"]},
+    {"code": "FR", "names": ["fire", "aop", "all other perils", "all other", "fr"]},
+    {"code": "TR", "names": ["terrorism", "tr"]},
+    {"code": "SCS", "names": ["severe convective storm", "hail", "tornado", "scs"]},
+    {"code": "WF", "names": ["wildfire", "bushfire", "wf"]}
+  ],
+  "rms_account_fields": {
+    "BLANLIMAMT": "Blanket Limit",
+    "PARTOF": "Part Of / Policy Limit",
+    "UNDCOVAMT": "Excess Of (Attachment Point)",
+    "BLANDEDAMT": "Blanket Deductible",
+    "MINDEDAMT": "Minimum Deductible",
+    "MAXDEDAMT": "Maximum Deductible",
+    "INCEPTDATE": "Inception Date",
+    "EXPIREDATE": "Expiry Date"
+  },
+  "section_markers": {
+    "tiv": ["tiv info", "total insurable value", "sum insured", "tiv:"],
+    "limits": ["limits of liability", "limit of liability", "policy condition", "schedule of limits", "sublimit"],
+    "deductibles": ["deductible", "deductibles", "g. deductible"],
+    "waiting": ["waiting period", "h. waiting period"],
+    "coinsurance": ["coinsurance", "participation", "part of", "line size"]
+  },
+  "extraction_rules_summary": [
+    "Capture TIV from header/summary; note international or geographic splits in tiv_notes.",
+    "Program/limit of liability is the primary policy cap; sublimits nest under parent perils (e.g. Flood aggregate with regional sub-rows).",
+    "Only model Nat Cat sublimits: EQ, Flood, Wind/Named Storm, and defined regions — skip boiler, fine art unless 100% of location value.",
+    "Deductibles may be monetary, % of TIV/value with min/max, or combined PD+TE; capture region and hazard zone qualifiers.",
+    "SIR and large deductibles stated separately map to excess_of / UNDCOVAMT in RMS.",
+    "Coinsurance/participation: store percentage; for modeling assume 100% line in BLANLIMAMT per Slip Coding.",
+    "Waiting periods (e.g. Service Interruption 24 hours) are separate rows, not dollar deductibles.",
+    "Annual aggregate limits are flagged in basis column — may not be fully modelled in RMS RiskLink."
+  ]
+}

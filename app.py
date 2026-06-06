@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-SmartCAT.AI — Streamlit UI (single-page SOV + slips → RMS/AIR imports).
+SmartCAT.AI — Slip Extraction UI (EXL).
+
+Upload insurance slips (PDF, Word, scanned images) and extract TIV, limits,
+sublimits, deductibles, participation, SIR, waiting periods, and CAT perils.
 """
 from __future__ import annotations
 
@@ -15,11 +18,7 @@ import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 
-from modules.module1_address_scrubbing import AddressScrubbingEngine
-from modules.module2_geocoding import GeocodingEngine
 from modules.module3_slip_extraction import SlipExtractionEngine
-from modules.module4_mapping import MappingEngine
-from modules.module5_model_builder import ModelBuilderEngine
 from smartcat_logging import setup_logging
 from smartcat_paths import OUTPUT_DIR, PROJECT_ROOT
 
@@ -28,182 +27,491 @@ load_dotenv(PROJECT_ROOT / ".env")
 setup_logging()
 log = logging.getLogger("smartcat.app")
 
-OUT_CLEAN = OUTPUT_DIR / "cleaned_sovs"
-OUT_GEO = OUTPUT_DIR / "geocoded"
 OUT_SLIP = OUTPUT_DIR / "extracted_slips"
-OUT_MAP = OUTPUT_DIR / "mapped_codes"
-OUT_IMP = OUTPUT_DIR / "model_imports"
-TMP_SLIPS = PROJECT_ROOT / "output" / "_tmp_slips"
+TMP_SLIPS = OUTPUT_DIR / "_tmp_slips"
+
+ACCEPT_TYPES = ["pdf", "docx", "png", "jpg", "jpeg", "tiff", "tif", "bmp", "webp"]
+
+# EXL Planet / iPlanet portal palette
+EXL_ORANGE = "#E84E0E"
+EXL_ORANGE_DARK = "#C7410B"
+EXL_ORANGE_LIGHT = "#FFF3EE"
+EXL_BLACK = "#222222"
+EXL_GREY_DARK = "#555555"
+EXL_GREY_MID = "#888888"
+EXL_GREY_LIGHT = "#DEDEDE"
+EXL_GREY_NAV = "#EBEBEB"
+EXL_GREY_BG = "#F2F2F2"
+EXL_GREY_SECTION = "#E8E8E8"
+EXL_WHITE = "#FFFFFF"
 
 
 def _init_session() -> None:
     defaults = {
-        "smartcat_upload_nonce": 0,
-        "smartcat_completed": False,
-        "smartcat_error": None,
-        "smartcat_traceback": None,
-        "smartcat_paths": {},
-        "smartcat_stats": {},
-        "smartcat_stem": "",
-        "smartcat_theme": "dark",
+        "slip_upload_nonce": 0,
+        "slip_completed": False,
+        "slip_error": None,
+        "slip_traceback": None,
+        "slip_records": [],
+        "slip_paths": {},
+        "slip_stats": {},
     }
     for k, v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
 
 
-def _inject_global_styles() -> None:
-    """Hide sidebar; animated background, hero, cards, buttons (keys from .env only)."""
-    dark = st.session_state.smartcat_theme == "dark"
-    bg = "#0a0e14" if dark else "#f0f4f8"
-    fg = "#e8eef7" if dark else "#0f172a"
-    card_bg = "linear-gradient(145deg, #121826 0%, #0d1118 100%)" if dark else "linear-gradient(145deg, #ffffff 0%, #f8fafc 100%)"
-    card_border = "1px solid #2a3344" if dark else "1px solid #e2e8f0"
-
+def _inject_exl_styles() -> None:
     st.markdown(
         f"""
         <style>
-        /* Hide sidebar completely (no API / settings panel) */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
         section[data-testid="stSidebar"] {{ display: none !important; }}
         div[data-testid="stSidebarCollapsedControl"] {{ display: none !important; }}
-        .stMainBlockContainer {{ padding-top: 1.25rem; max-width: 1100px; margin: 0 auto; }}
+        header[data-testid="stHeader"] {{
+            background: {EXL_WHITE} !important;
+            border-bottom: 1px solid {EXL_GREY_LIGHT};
+        }}
+        #MainMenu, footer {{ visibility: hidden; }}
+
+        html, body, [class*="css"] {{
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }}
 
         .stApp {{
-            background: {bg};
-            color: {fg};
+            background: {EXL_GREY_BG};
+            color: {EXL_BLACK};
         }}
-        .stApp::before {{
-            content: "";
-            position: fixed;
-            inset: 0;
-            pointer-events: none;
-            z-index: 0;
-            background:
-                radial-gradient(ellipse 80% 50% at 20% -10%, {"rgba(56, 189, 248, 0.18)" if dark else "rgba(14, 165, 233, 0.12)"}, transparent 55%),
-                radial-gradient(ellipse 60% 40% at 100% 0%, {"rgba(167, 139, 250, 0.14)" if dark else "rgba(139, 92, 246, 0.1)"}, transparent 50%),
-                radial-gradient(ellipse 50% 30% at 50% 100%, {"rgba(34, 197, 94, 0.08)" if dark else "rgba(34, 197, 94, 0.06)"}, transparent 45%);
-            animation: smartcat-bg-drift 18s ease-in-out infinite alternate;
-        }}
-        @keyframes smartcat-bg-drift {{
-            0% {{ opacity: 0.85; filter: hue-rotate(0deg); }}
-            100% {{ opacity: 1; filter: hue-rotate(12deg); }}
-        }}
-        .block-container {{ position: relative; z-index: 1; }}
 
-        /* Hero */
-        .smartcat-hero {{
-            text-align: center;
-            padding: 0.5rem 0 1.25rem;
-            animation: smartcat-hero-in 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        .block-container {{
+            padding-top: 0 !important;
+            max-width: 1180px;
         }}
-        @keyframes smartcat-hero-in {{
-            from {{ opacity: 0; transform: translateY(22px) scale(0.98); }}
-            to {{ opacity: 1; transform: translateY(0) scale(1); }}
+
+        /* ── Header (Planet EXL style) ── */
+        .exl-topbar {{
+            background: {EXL_WHITE};
+            margin: -1rem -1rem 0 -1rem;
+            padding: 0.85rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid {EXL_GREY_LIGHT};
         }}
-        .smartcat-title {{
-            font-size: clamp(2rem, 5vw, 2.75rem);
+        .exl-logo {{
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+        }}
+        .exl-logo-mark {{
+            color: {EXL_ORANGE};
             font-weight: 800;
+            font-size: 1.55rem;
             letter-spacing: -0.03em;
+            line-height: 1;
+        }}
+        .exl-logo-text {{
+            color: {EXL_GREY_MID};
+            font-weight: 600;
+            font-size: 1.05rem;
+            letter-spacing: -0.01em;
+        }}
+        .exl-topbar-right {{
+            text-align: right;
+        }}
+        .exl-built-by {{
+            color: {EXL_ORANGE};
+            font-size: 0.82rem;
+            font-weight: 600;
+        }}
+        .exl-built-by span {{
+            color: {EXL_GREY_MID};
+            font-weight: 400;
+        }}
+
+        /* ── Nav strip ── */
+        .exl-navstrip {{
+            background: {EXL_GREY_NAV};
+            margin: 0 -1rem;
+            padding: 0.55rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid {EXL_GREY_LIGHT};
+        }}
+        .exl-navstrip-links {{
+            display: flex;
+            gap: 1.5rem;
+            font-size: 0.78rem;
+            font-weight: 500;
+            color: {EXL_GREY_DARK};
+        }}
+        .exl-navstrip-links .active {{
+            color: {EXL_ORANGE};
+            font-weight: 700;
+        }}
+        .exl-navstrip-tag {{
+            font-size: 0.72rem;
+            color: {EXL_GREY_MID};
+            font-weight: 500;
+        }}
+
+        /* ── Hero ── */
+        .exl-hero {{
+            background: {EXL_WHITE};
+            border-bottom: 1px solid {EXL_GREY_LIGHT};
+            margin: 0 -1rem;
+            padding: 1.75rem 2rem 1.5rem;
+        }}
+        .exl-hero-tag {{
+            display: inline-block;
+            background: {EXL_GREY_SECTION};
+            color: {EXL_GREY_DARK};
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            padding: 5px 12px;
+            border-radius: 3px;
+            margin-bottom: 0.75rem;
+        }}
+        .exl-hero h1 {{
+            font-size: clamp(1.6rem, 3.5vw, 2.1rem);
+            font-weight: 800;
+            color: {EXL_BLACK};
+            margin: 0 0 0.4rem;
+            letter-spacing: -0.03em;
+            line-height: 1.2;
+        }}
+        .exl-hero h1 span {{
+            color: {EXL_ORANGE};
+        }}
+        .exl-hero p {{
+            color: {EXL_GREY_DARK};
+            font-size: 0.95rem;
             margin: 0;
-            line-height: 1.15;
+            max-width: 640px;
+            line-height: 1.55;
         }}
-        .smartcat-title .grad {{
-            background: linear-gradient(105deg, #38bdf8 0%, #818cf8 35%, #34d399 70%, #22d3ee 100%);
-            background-size: 200% auto;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            animation: smartcat-shimmer 4s linear infinite;
+
+        /* ── Section cards ── */
+        .exl-section {{
+            background: {EXL_WHITE};
+            border: 1px solid {EXL_GREY_LIGHT};
+            border-radius: 8px;
+            padding: 1.5rem 1.75rem;
+            margin-bottom: 1rem;
         }}
-        @keyframes smartcat-shimmer {{
-            0% {{ background-position: 0% center; }}
-            100% {{ background-position: 200% center; }}
+        .exl-section-header {{
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: -1.5rem -1.75rem 1.1rem;
+            padding: 0.7rem 1.75rem;
+            background: {EXL_GREY_SECTION};
+            border-bottom: 1px solid {EXL_GREY_LIGHT};
         }}
-        .smartcat-sub {{
-            margin-top: 0.65rem;
-            font-size: 1.02rem;
-            opacity: 0.82;
-            max-width: 36rem;
+        .exl-step-num {{
+            background: {EXL_ORANGE};
+            color: white;
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 700;
+            flex-shrink: 0;
+        }}
+        .exl-section-title {{
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: {EXL_BLACK};
+            letter-spacing: -0.01em;
+        }}
+        .exl-section-sub {{
+            font-size: 0.8rem;
+            color: {EXL_GREY_MID};
             margin-left: auto;
-            margin-right: auto;
-            animation: smartcat-fade 1s ease 0.2s both;
-        }}
-        @keyframes smartcat-fade {{
-            from {{ opacity: 0; }}
-            to {{ opacity: 0.82; }}
         }}
 
-        /* Upload zones pulse */
-        [data-testid="stFileUploader"] {{
-            border-radius: 14px;
-            transition: box-shadow 0.35s ease, transform 0.35s ease;
-            animation: smartcat-upload-glow 3.2s ease-in-out infinite;
+        /* ── Metric cards ── */
+        .exl-metrics {{
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin: 0.5rem 0 1rem;
         }}
-        @keyframes smartcat-upload-glow {{
-            0%, 100% {{ box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }}
-            50% {{ box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.22), 0 8px 32px rgba(15, 23, 42, 0.12); }}
+        @media (max-width: 768px) {{
+            .exl-metrics {{ grid-template-columns: repeat(2, 1fr); }}
         }}
-        [data-testid="stFileUploader"]:hover {{
-            transform: translateY(-2px);
+        .exl-metric {{
+            background: {EXL_GREY_BG};
+            border: 1px solid {EXL_GREY_LIGHT};
+            border-left: 3px solid {EXL_ORANGE};
+            border-radius: 6px;
+            padding: 0.85rem 1rem;
+        }}
+        .exl-metric-label {{
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: {EXL_GREY_MID};
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            margin-bottom: 4px;
+        }}
+        .exl-metric-value {{
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: {EXL_BLACK};
+            letter-spacing: -0.02em;
         }}
 
-        /* Primary run button */
+        /* ── Success banner ── */
+        .exl-success-banner {{
+            background: {EXL_WHITE};
+            border: 1px solid {EXL_GREY_LIGHT};
+            border-left: 4px solid {EXL_ORANGE};
+            border-radius: 6px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }}
+        .exl-success-dot {{
+            width: 10px;
+            height: 10px;
+            background: {EXL_ORANGE};
+            border-radius: 50%;
+            flex-shrink: 0;
+        }}
+        .exl-success-text {{
+            font-size: 0.9rem;
+            color: {EXL_GREY_DARK};
+        }}
+        .exl-success-text b {{
+            color: {EXL_BLACK};
+        }}
+
+        /* ── Detail row ── */
+        .exl-detail-grid {{
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px 24px;
+            margin-top: 0.5rem;
+        }}
+        @media (max-width: 768px) {{
+            .exl-detail-grid {{ grid-template-columns: 1fr; }}
+        }}
+        .exl-detail-item {{
+            font-size: 0.82rem;
+            color: {EXL_GREY_DARK};
+            line-height: 1.5;
+        }}
+        .exl-detail-item strong {{
+            color: {EXL_BLACK};
+            font-weight: 600;
+        }}
+
+        /* ── Footer ── */
+        .exl-footer {{
+            text-align: center;
+            padding: 1.25rem 0 0.75rem;
+            font-size: 0.75rem;
+            color: {EXL_GREY_MID};
+            border-top: 1px solid {EXL_GREY_LIGHT};
+            margin-top: 2rem;
+            background: {EXL_WHITE};
+            margin-left: -1rem;
+            margin-right: -1rem;
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }}
+        .exl-footer strong {{
+            color: {EXL_ORANGE};
+            font-weight: 700;
+        }}
+        .exl-footer-credit {{
+            margin-top: 0.35rem;
+            font-size: 0.78rem;
+            color: {EXL_GREY_DARK};
+        }}
+        .exl-footer-credit b {{
+            color: {EXL_ORANGE};
+            font-weight: 600;
+        }}
+
+        /* ── File uploader dropzone ── */
+        div[data-testid="stFileUploader"] {{
+            background: transparent;
+            border: none;
+            padding: 0;
+        }}
+        div[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] {{
+            background: {EXL_GREY_LIGHT} !important;
+            border: 1.5px dashed {EXL_GREY_MID} !important;
+            border-radius: 8px !important;
+            padding: 1.75rem 1.5rem !important;
+            min-height: 110px !important;
+            transition: border-color 0.2s, background 0.2s !important;
+        }}
+        div[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"]:hover {{
+            border-color: {EXL_ORANGE} !important;
+            background: #EFEFEF !important;
+        }}
+        div[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] > div {{
+            color: {EXL_BLACK} !important;
+        }}
+        div[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] span,
+        div[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] p {{
+            color: {EXL_BLACK} !important;
+            font-size: 1.05rem !important;
+            font-weight: 600 !important;
+            line-height: 1.5 !important;
+        }}
+        div[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] small {{
+            color: {EXL_GREY_DARK} !important;
+            font-size: 0.88rem !important;
+            font-weight: 500 !important;
+            line-height: 1.6 !important;
+            margin-top: 6px !important;
+            display: block !important;
+        }}
+        div[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] svg {{
+            stroke: {EXL_GREY_DARK} !important;
+            width: 28px !important;
+            height: 28px !important;
+        }}
+        div[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] button {{
+            background: {EXL_WHITE} !important;
+            color: {EXL_BLACK} !important;
+            border: 1.5px solid {EXL_GREY_MID} !important;
+            border-radius: 6px !important;
+            font-size: 0.9rem !important;
+            font-weight: 600 !important;
+            padding: 0.45rem 1.1rem !important;
+        }}
+        div[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] button:hover {{
+            border-color: {EXL_ORANGE} !important;
+            color: {EXL_ORANGE} !important;
+            background: {EXL_WHITE} !important;
+        }}
+
         div[data-testid="stButton"] > button[kind="primary"] {{
-            border-radius: 12px !important;
-            font-weight: 700 !important;
-            letter-spacing: 0.02em;
-            transition: transform 0.22s ease, box-shadow 0.28s ease !important;
-            background: linear-gradient(135deg, #059669 0%, #10b981 45%, #34d399 100%) !important;
+            background: {EXL_ORANGE} !important;
             border: none !important;
-            box-shadow: 0 6px 24px rgba(16, 185, 129, 0.35) !important;
+            border-radius: 6px !important;
+            font-weight: 700 !important;
+            font-size: 0.9rem !important;
+            letter-spacing: 0.02em !important;
+            padding: 0.65rem 1.5rem !important;
+            transition: background 0.2s, transform 0.15s !important;
+            box-shadow: 0 2px 8px rgba(240,90,40,0.25) !important;
         }}
         div[data-testid="stButton"] > button[kind="primary"]:hover:not(:disabled) {{
-            transform: translateY(-3px) scale(1.01) !important;
-            box-shadow: 0 12px 36px rgba(16, 185, 129, 0.45) !important;
+            background: {EXL_ORANGE_DARK} !important;
+            transform: translateY(-1px) !important;
+            box-shadow: 0 4px 14px rgba(240,90,40,0.35) !important;
         }}
-        div[data-testid="stButton"] > button[kind="primary"]:active:not(:disabled) {{
-            transform: translateY(0) scale(0.99) !important;
-        }}
-
-        /* Section headers */
-        h3 {{ animation: smartcat-slide 0.6s ease both; }}
-        @keyframes smartcat-slide {{
-            from {{ opacity: 0; transform: translateX(-12px); }}
-            to {{ opacity: 1; transform: translateX(0); }}
+        div[data-testid="stButton"] > button[kind="primary"]:disabled {{
+            background: {EXL_GREY_LIGHT} !important;
+            color: {EXL_GREY_MID} !important;
+            box-shadow: none !important;
         }}
 
-        /* Summary card */
-        .smartcat-summary-card {{
-            background: {card_bg};
-            border: {card_border};
-            border-radius: 16px;
-            padding: 1.35rem 1.6rem;
-            margin: 1rem 0;
-            box-shadow: {"0 12px 40px rgba(0,0,0,0.35)" if dark else "0 8px 30px rgba(15,23,42,0.08)"};
-            animation: smartcat-card-pop 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-        }}
-        @keyframes smartcat-card-pop {{
-            0% {{ opacity: 0; transform: scale(0.94) translateY(16px); }}
-            100% {{ opacity: 1; transform: scale(1) translateY(0); }}
-        }}
-
-        /* Download buttons subtle lift */
-        div[data-testid="stDownloadButton"] button {{
-            transition: transform 0.2s ease, box-shadow 0.2s ease !important;
-            border-radius: 10px !important;
-        }}
-        div[data-testid="stDownloadButton"] button:hover {{
-            transform: translateY(-2px);
-        }}
-
-        /* Status widget polish */
-        [data-testid="stStatus"] {{
-            border-radius: 12px;
-        }}
-
-        /* Secondary buttons */
         div[data-testid="stButton"] > button[kind="secondary"] {{
-            border-radius: 10px !important;
+            border: 1px solid {EXL_GREY_LIGHT} !important;
+            color: {EXL_GREY_DARK} !important;
+            border-radius: 6px !important;
+            font-weight: 600 !important;
+            font-size: 0.82rem !important;
+            background: {EXL_WHITE} !important;
+        }}
+        div[data-testid="stButton"] > button[kind="secondary"]:hover {{
+            border-color: {EXL_ORANGE} !important;
+            color: {EXL_ORANGE} !important;
+        }}
+
+        div[data-testid="stDownloadButton"] > button {{
+            background: {EXL_ORANGE} !important;
+            color: {EXL_WHITE} !important;
+            border: none !important;
+            border-radius: 4px !important;
+            font-weight: 600 !important;
+            font-size: 0.85rem !important;
+            transition: background 0.2s !important;
+        }}
+        div[data-testid="stDownloadButton"] > button:hover {{
+            background: {EXL_ORANGE_DARK} !important;
+        }}
+
+        div[data-testid="stMetric"] {{
+            background: {EXL_GREY_BG};
+            border: 1px solid {EXL_GREY_LIGHT};
+            border-left: 3px solid {EXL_ORANGE};
+            border-radius: 6px;
+            padding: 0.75rem 1rem;
+        }}
+        div[data-testid="stMetricLabel"] {{
+            font-size: 0.72rem !important;
+            font-weight: 600 !important;
+            color: {EXL_GREY_MID} !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.06em !important;
+        }}
+        div[data-testid="stMetricValue"] {{
+            font-size: 1.2rem !important;
+            font-weight: 700 !important;
+            color: {EXL_BLACK} !important;
+        }}
+
+        .stTabs [data-baseweb="tab-list"] {{
+            gap: 4px;
+            background: {EXL_GREY_BG};
+            border-radius: 8px;
+            padding: 4px;
+            border: 1px solid {EXL_GREY_LIGHT};
+        }}
+        .stTabs [data-baseweb="tab"] {{
+            border-radius: 5px !important;
+            font-weight: 600 !important;
+            font-size: 0.82rem !important;
+            color: {EXL_GREY_DARK} !important;
+            padding: 6px 14px !important;
+        }}
+        .stTabs [aria-selected="true"] {{
+            background: {EXL_WHITE} !important;
+            color: {EXL_ORANGE} !important;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08) !important;
+        }}
+
+        div[data-testid="stExpander"] {{
+            border: 1px solid {EXL_GREY_LIGHT} !important;
+            border-radius: 8px !important;
+            background: {EXL_WHITE} !important;
+        }}
+
+        div[data-testid="stStatus"] {{
+            border: 1px solid {EXL_GREY_LIGHT};
+            border-radius: 8px;
+        }}
+
+        .stAlert {{
+            border-radius: 6px !important;
+        }}
+
+        hr {{
+            border-color: {EXL_GREY_LIGHT} !important;
+            margin: 1.25rem 0 !important;
+        }}
+
+        h3, h2 {{
+            color: {EXL_BLACK} !important;
+            font-weight: 700 !important;
+            letter-spacing: -0.02em !important;
         }}
         </style>
         """,
@@ -211,336 +519,335 @@ def _inject_global_styles() -> None:
     )
 
 
-def _geocode_breakdown(df: pd.DataFrame) -> dict[str, int]:
-    n = len(df)
-    if n == 0:
-        return {"with_coords": 0, "fallback": 0, "failed": 0, "success_high": 0}
-    lat_ok = df.get("Latitude")
-    lon_ok = df.get("Longitude")
-    if lat_ok is None or lon_ok is None:
-        return {"with_coords": 0, "fallback": 0, "failed": n, "success_high": 0}
-    has_geo = lat_ok.notna() & lon_ok.notna()
-    conf = pd.to_numeric(df.get("Confidence Score", pd.Series([100.0] * n)), errors="coerce").fillna(100.0)
-    res = df.get("Resolution", pd.Series([""] * n)).astype(str).str.upper()
-    fallback = has_geo & (res.str.contains(r"DISTRIBUTED|CITY_CENTROID", regex=True, na=False) | (conf < 60.0))
-    success_high = has_geo & ~fallback
-    return {
-        "with_coords": int(has_geo.sum()),
-        "fallback": int(fallback.sum()),
-        "failed": int((~has_geo).sum()),
-        "success_high": int(success_high.sum()),
-    }
+def _render_header() -> None:
+    st.markdown(
+        f"""
+        <div class="exl-topbar">
+            <div class="exl-logo">
+                <div class="exl-logo-mark">EXL</div>
+                <div class="exl-logo-text">SmartCAT.AI</div>
+            </div>
+            <div class="exl-topbar-right">
+                <div class="exl-built-by">Built by <span>Satyam Mishra</span></div>
+            </div>
+        </div>
+        <div class="exl-navstrip">
+            <div class="exl-navstrip-links">
+                <span class="active">Slip Extraction</span>
+                <span>Insurance Intelligence</span>
+            </div>
+            <div class="exl-navstrip-tag">CAT Modelling · Slip Modelling</div>
+        </div>
+        <div class="exl-hero">
+            <div class="exl-hero-tag">Slip Modelling &amp; Extraction</div>
+            <h1>Smart<span>CAT</span>.AI</h1>
+            <p>Extract TIV, limits, sublimits, deductibles, participation, SIR, waiting periods,
+            and CAT peril terms from insurance slips — output to structured tables and Excel.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_section_header(step: int, title: str, subtitle: str = "") -> None:
+    sub_html = f'<span class="exl-section-sub">{subtitle}</span>' if subtitle else ""
+    st.markdown(
+        f"""
+        <div class="exl-section-header">
+            <div class="exl-step-num">{step}</div>
+            <div class="exl-section-title">{title}</div>
+            {sub_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _fmt_money(val: Any) -> str:
+    if val is None or val == "":
+        return "—"
+    try:
+        n = float(str(val).replace(",", ""))
+        return f"${n:,.0f}"
+    except ValueError:
+        return str(val)
 
 
 def _clear_all() -> None:
-    st.session_state.smartcat_upload_nonce += 1
-    st.session_state.smartcat_completed = False
-    st.session_state.smartcat_error = None
-    st.session_state.smartcat_traceback = None
-    st.session_state.smartcat_paths = {}
-    st.session_state.smartcat_stats = {}
-    st.session_state.smartcat_stem = ""
+    st.session_state.slip_upload_nonce += 1
+    st.session_state.slip_completed = False
+    st.session_state.slip_error = None
+    st.session_state.slip_traceback = None
+    st.session_state.slip_records = []
+    st.session_state.slip_paths = {}
+    st.session_state.slip_stats = {}
     st.rerun()
+
+
+def _render_summary_metrics(rec: dict[str, Any]) -> None:
+    cols = st.columns(4)
+    fields = [
+        ("Total Insurable Value", _fmt_money(rec.get("tiv"))),
+        ("Program Limit", _fmt_money(rec.get("limit_of_liability"))),
+        ("Participation", f"{rec.get('participation_pct') or rec.get('coinsurance_pct') or '—'}%"),
+        ("Confidence Score", f"{rec.get('confidence_score', 0)}%"),
+    ]
+    for col, (label, val) in zip(cols, fields):
+        with col:
+            st.metric(label, val)
+
+    st.markdown(
+        f"""
+        <div class="exl-detail-grid">
+            <div class="exl-detail-item"><strong>Named Insured:</strong> {rec.get('named_insured') or '—'}</div>
+            <div class="exl-detail-item"><strong>SIR / Excess:</strong> {_fmt_money(rec.get('sir'))} / {_fmt_money(rec.get('excess_of'))}</div>
+            <div class="exl-detail-item"><strong>Extraction Method:</strong> {rec.get('extraction_method', '—')}</div>
+            <div class="exl-detail-item"><strong>Policy Period:</strong> {rec.get('effective_date') or '—'} → {rec.get('expiration_date') or '—'}</div>
+            <div class="exl-detail-item"><strong>Blanket Deductible:</strong> {_fmt_money(rec.get('blanket_deductible'))}</div>
+            <div class="exl-detail-item"><strong>Min / Max Deductible:</strong> {_fmt_money(rec.get('min_deductible'))} / {_fmt_money(rec.get('max_deductible'))}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def main() -> None:
     _init_session()
     st.set_page_config(
-        page_title="SmartCAT.AI",
+        page_title="SmartCAT.AI | EXL",
         layout="wide",
         initial_sidebar_state="collapsed",
-        page_icon="🛰️",
+        page_icon="📄",
     )
-    _inject_global_styles()
+    _inject_exl_styles()
+    _render_header()
 
-    _, center, _ = st.columns([0.04, 1.0, 0.04])
-    with center:
-        bar1, bar2, bar3, bar4 = st.columns([4, 1, 1, 1])
-        with bar2:
-            if st.button("☀️ Light", key="theme_light", use_container_width=True):
-                st.session_state.smartcat_theme = "light"
-                st.rerun()
-        with bar3:
-            if st.button("🌙 Dark", key="theme_dark", use_container_width=True):
-                st.session_state.smartcat_theme = "dark"
-                st.rerun()
-        with bar4:
-            if st.button("Clear All", key="clear_all", help="Reset uploads and results", use_container_width=True):
+    _, content, _ = st.columns([0.01, 1.0, 0.01])
+    with content:
+        hdr_l, hdr_r = st.columns([5, 1])
+        with hdr_r:
+            if st.button("Reset", key="clear", type="secondary", use_container_width=True):
                 _clear_all()
 
-        st.markdown(
-            """
-            <div class="smartcat-hero">
-                <h1 class="smartcat-title"><span class="grad">SmartCAT.AI</span></h1>
-                <p class="smartcat-sub">
-                    Upload your SOV and insurance slips — generate RMS RiskLink &amp; AIR Touchstone import files in one run.
-                </p>
-            </div>
-            """,
-            unsafe_allow_html=True,
+        # Step 1 — Upload
+        st.markdown('<div class="exl-section">', unsafe_allow_html=True)
+        _render_section_header(1, "Upload Insurance Slips", "PDF · Word · Scanned Images")
+
+        nonce = st.session_state.slip_upload_nonce
+        slips = st.file_uploader(
+            "Drag and drop slip files here",
+            type=ACCEPT_TYPES,
+            accept_multiple_files=True,
+            key=f"slips_{nonce}",
+            label_visibility="collapsed",
+            help="Supported: PDF (text or scanned), Word (.docx), PNG, JPG, TIFF",
         )
 
-        nonce = st.session_state.smartcat_upload_nonce
-
-        with st.container():
-            st.subheader("① File uploads")
-            u1, u2 = st.columns(2)
-            with u1:
-                sov = st.file_uploader(
-                    "Statement of Values (SOV)",
-                    type=["csv", "xlsx", "xls"],
-                    key=f"sov_{nonce}",
-                    help="Excel or CSV with locations, occupancy, construction, TIV",
-                )
-            with u2:
-                slips = st.file_uploader(
-                    "Insurance slips (PDF)",
-                    type=["pdf"],
-                    accept_multiple_files=True,
-                    key=f"slips_{nonce}",
-                    help="One or more policy slips",
-                )
-
-            fc1, fc2 = st.columns(2)
-            with fc1:
-                if sov:
-                    st.success(f"✓ SOV: `{sov.name}`")
-                else:
-                    st.info("Drop or browse for **SOV** (.xlsx / .csv)")
-            with fc2:
-                if slips:
-                    for s in slips:
-                        st.success(f"✓ Slip: `{s.name}`")
-                else:
-                    st.info("Drop or browse for **PDF slip(s)**")
-
-        run_disabled = sov is None or not slips
-        if run_disabled:
-            st.warning("Upload **both** a SOV and **at least one** PDF slip to enable the run button.")
-
-        st.subheader("② Generate imports")
-        run = st.button(
-            "🚀 Generate Model Import Files",
-            type="primary",
-            disabled=run_disabled,
-            use_container_width=True,
-            key="run_pipeline_btn",
-        )
-
-        if st.session_state.smartcat_error:
-            st.error(f"**Processing stopped:** {st.session_state.smartcat_error}")
-            tb = st.session_state.smartcat_traceback
-            if tb:
-                with st.expander("Technical details (traceback)"):
-                    st.code(tb, language="python")
-
-        if st.session_state.smartcat_completed and not st.session_state.smartcat_error:
-            stats = st.session_state.smartcat_stats
-            paths: dict[str, Any] = st.session_state.smartcat_paths
-            rate = stats.get("geocode_rate_pct", 0)
-            rows_n = stats.get("rows", 0)
-            geo_w = stats.get("geocode", {}).get("with_coords", 0)
-            slips_n = stats.get("slips", 0)
-
-            st.divider()
-            st.subheader("③ Results")
+        if slips:
+            file_cols = st.columns(min(len(slips), 4))
+            for i, s in enumerate(slips):
+                with file_cols[i % len(file_cols)]:
+                    st.markdown(
+                        f"""<div style="background:{EXL_GREY_BG};border:1px solid {EXL_GREY_LIGHT};border-left:3px solid {EXL_ORANGE};
+                        border-radius:4px;padding:0.6rem 0.85rem;font-size:0.82rem;font-weight:600;color:{EXL_BLACK};">
+                        {s.name}</div>""",
+                        unsafe_allow_html=True,
+                    )
+        else:
             st.markdown(
-                f"""
-<div class="smartcat-summary-card">
-  <div style="font-size:1.12rem;font-weight:650;margin-bottom:0.65rem;">✅ Processing complete</div>
-  <hr style="border:none;border-top:1px solid rgba(148,163,184,0.35);margin:0.45rem 0;" />
-  <div style="font-weight:600;margin-bottom:0.45rem;">📊 Statistics</div>
-  <ul style="margin:0;padding-left:1.2rem;line-height:1.65;">
-    <li>Locations processed: <b>{rows_n}</b></li>
-    <li>Geocoding success rate: <b>{rate}%</b> ({geo_w} / {rows_n} with coordinates)</li>
-    <li>Slips processed: <b>{slips_n}</b></li>
-    <li>Time taken: <b>{stats.get("elapsed_sec", 0)} sec</b></li>
-  </ul>
-</div>
-""",
+                f"""<div style="text-align:center;padding:1.5rem;color:{EXL_GREY_MID};font-size:0.85rem;">
+                No files selected — browse or drag files above</div>""",
                 unsafe_allow_html=True,
             )
 
-            rms_c, air_c = st.columns(2)
-            with rms_c:
-                st.markdown("##### 📥 RMS (RiskLink)")
-                rp = paths.get("rms_locations")
-                if rp and Path(rp).exists():
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        # Step 2 — Extract
+        st.markdown('<div class="exl-section">', unsafe_allow_html=True)
+        _render_section_header(2, "Run Extraction")
+
+        run_disabled = not slips
+        run = st.button(
+            "Extract Slip Data",
+            type="primary",
+            disabled=run_disabled,
+            use_container_width=True,
+        )
+        if run_disabled:
+            st.caption("Upload at least one slip file to enable extraction.")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        if st.session_state.slip_error:
+            st.error(f"**Extraction failed:** {st.session_state.slip_error}")
+            if st.session_state.slip_traceback:
+                with st.expander("Technical details"):
+                    st.code(st.session_state.slip_traceback, language="python")
+
+        # Step 3 — Results
+        if st.session_state.slip_completed and st.session_state.slip_records:
+            stats = st.session_state.slip_stats
+            paths = st.session_state.slip_paths
+
+            st.markdown('<div class="exl-section">', unsafe_allow_html=True)
+            _render_section_header(3, "Extraction Results", f"{stats.get('elapsed_sec', 0)}s processing time")
+
+            st.markdown(
+                f"""<div class="exl-success-banner">
+                    <div class="exl-success-dot"></div>
+                    <div class="exl-success-text">
+                        <b>{stats.get('slip_count', 0)} slip(s)</b> processed successfully —
+                        <b>{stats.get('total_limits', 0)}</b> limit rows &nbsp;·&nbsp;
+                        <b>{stats.get('total_deductibles', 0)}</b> deductible rows extracted
+                    </div>
+                </div>""",
+                unsafe_allow_html=True,
+            )
+
+            dl1, dl2 = st.columns(2)
+            xlsx_p = paths.get("xlsx")
+            json_p = paths.get("json")
+            if xlsx_p and Path(xlsx_p).exists():
+                with dl1:
                     st.download_button(
-                        "Download RMS Locations (.txt)",
-                        data=Path(rp).read_bytes(),
-                        file_name=Path(rp).name,
-                        mime="text/plain",
+                        "Download Excel Report",
+                        data=Path(xlsx_p).read_bytes(),
+                        file_name=Path(xlsx_p).name,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         use_container_width=True,
-                        key="dl_rms_loc",
+                        key="dl_xlsx",
                     )
-                ra = paths.get("rms_accounts")
-                if ra and Path(ra).exists():
+            if json_p and Path(json_p).exists():
+                with dl2:
                     st.download_button(
-                        "Download RMS Accounts (.txt)",
-                        data=Path(ra).read_bytes(),
-                        file_name=Path(ra).name,
-                        mime="text/plain",
+                        "Download JSON",
+                        data=Path(json_p).read_bytes(),
+                        file_name=Path(json_p).name,
+                        mime="application/json",
                         use_container_width=True,
-                        key="dl_rms_acc",
-                    )
-            with air_c:
-                st.markdown("##### 📥 AIR (Touchstone)")
-                ac = paths.get("air_csv")
-                if ac and Path(ac).exists():
-                    st.download_button(
-                        "Download AIR Locations (.csv)",
-                        data=Path(ac).read_bytes(),
-                        file_name=Path(ac).name,
-                        mime="text/csv",
-                        use_container_width=True,
-                        key="dl_air_csv",
+                        key="dl_json",
                     )
 
-            with st.expander("Supporting files (optional downloads)", expanded=False):
-                sup_items = [
-                    ("scrubbed", "Cleaned SOV (.xlsx)"),
-                    ("geocoded", "Geocoded locations (.csv)"),
-                    ("mapped", "Mapped codes (.xlsx)"),
-                    ("slips_json", "Extracted slips (JSON)"),
-                    ("slips_xlsx", "Extracted slips (Excel)"),
-                ]
-                cols = st.columns(2)
-                for i, (pk, label) in enumerate(sup_items):
-                    pth = paths.get(pk)
-                    with cols[i % 2]:
-                        if pth and Path(pth).exists():
-                            st.download_button(
-                                f"Download — {label}",
-                                data=Path(pth).read_bytes(),
-                                file_name=Path(pth).name,
-                                use_container_width=True,
-                                key=f"sup_dl_{pk}_{nonce}",
-                            )
+            for idx, rec in enumerate(st.session_state.slip_records):
+                st.markdown("---")
+                st.markdown(
+                    f"""<div style="font-size:0.95rem;font-weight:700;color:{EXL_BLACK};margin-bottom:0.75rem;">
+                    {rec.get('source_file', f'Slip {idx + 1}')}</div>""",
+                    unsafe_allow_html=True,
+                )
+                _render_summary_metrics(rec)
 
-        if run and sov and slips:
-            stem = Path(sov.name).stem
-            slip_metas = [(s.name, s.getvalue()) for s in slips]
+                tabs = st.tabs([
+                    "Limits & Sublimits",
+                    "Deductibles",
+                    "Waiting Periods",
+                    "CAT Perils",
+                    "Source Text",
+                ])
 
-            st.session_state.smartcat_completed = False
-            st.session_state.smartcat_error = None
-            st.session_state.smartcat_traceback = None
-            st.session_state.smartcat_paths = {}
-            st.session_state.smartcat_stats = {}
+                with tabs[0]:
+                    df_lim = pd.DataFrame(rec.get("limits_sublimits") or [])
+                    if not df_lim.empty:
+                        show = [c for c in ["row_type", "peril", "region", "description", "amount", "status", "basis"] if c in df_lim.columns]
+                        st.dataframe(df_lim[show], use_container_width=True, hide_index=True)
+                    else:
+                        st.warning("No limit or sublimit rows were extracted from this slip.")
 
-            translate_key = os.getenv("GOOGLE_TRANSLATE_API_KEY")
-            maps_key = os.getenv("GOOGLE_MAPS_API_KEY")
+                with tabs[1]:
+                    df_ded = pd.DataFrame(rec.get("deductibles") or [])
+                    if not df_ded.empty:
+                        show = [c for c in ["peril", "region", "hazard_zone", "coverage_type", "deductible_type", "amount", "pct", "min_amount", "max_amount", "basis"] if c in df_ded.columns]
+                        st.dataframe(df_ded[show], use_container_width=True, hide_index=True)
+                    else:
+                        st.warning("No deductible rows were extracted from this slip.")
+
+                with tabs[2]:
+                    df_w = pd.DataFrame(rec.get("waiting_periods") or [])
+                    if not df_w.empty:
+                        st.dataframe(df_w, use_container_width=True, hide_index=True)
+                    else:
+                        st.caption("No waiting periods identified.")
+
+                with tabs[3]:
+                    df_cat = pd.DataFrame(rec.get("cat_peril_summary") or [])
+                    if not df_cat.empty:
+                        st.dataframe(
+                            df_cat[["peril_code", "peril_name", "primary_limit", "limit_status", "sublimit_count", "deductible_count"]],
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+                    else:
+                        st.caption("No CAT peril summary available.")
+
+                with tabs[4]:
+                    preview = rec.get("raw_text_preview", "")[:2500]
+                    st.text(preview or "No source text extracted. Scanned PDFs require Tesseract OCR.")
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        if run and slips:
+            st.session_state.slip_completed = False
+            st.session_state.slip_error = None
+            st.session_state.slip_traceback = None
+
             openai_key = os.getenv("OPENAI_API_KEY")
-
             t0 = time.perf_counter()
-            status_ctx = st.status("Running pipeline…", expanded=True)
 
-            try:
-                with status_ctx:
-                    status_ctx.markdown("**Step 1/5:** Address scrubbing…")
-                    suf = Path(sov.name).suffix.lower()
-                    raw = sov.getvalue()
-                    df = pd.read_csv(pd.io.common.BytesIO(raw)) if suf == ".csv" else pd.read_excel(pd.io.common.BytesIO(raw))
-
-                    m1 = AddressScrubbingEngine(translate_api_key=translate_key)
-                    df = m1.scrub_dataframe(df)
-                    OUT_CLEAN.mkdir(parents=True, exist_ok=True)
-                    p1 = OUT_CLEAN / f"{stem}_scrubbed.xlsx"
-                    df.to_excel(p1, index=False)
-                    status_ctx.write(f"Step 1/5: Address scrubbing… ✅ Done ({len(df)} rows processed)")
-
-                    status_ctx.markdown("**Step 2/5:** Geocoding…")
-                    geo = GeocodingEngine(
-                        google_maps_key=maps_key,
-                        audit_path=OUT_GEO / "geocode_audit.csv",
-                    )
-                    df = geo.geocode_dataframe(df)
-                    OUT_GEO.mkdir(parents=True, exist_ok=True)
-                    p2 = OUT_GEO / f"{stem}_geocoded.csv"
-                    df.to_csv(p2, index=False)
-                    gb = _geocode_breakdown(df)
-                    status_ctx.write(
-                        f"Step 2/5: Geocoding… ✅ Done ({gb['success_high']} high-confidence, "
-                        f"{gb['fallback']} approximate/fallback, {gb['failed']} without coordinates)"
-                    )
-
-                    status_ctx.markdown("**Step 3/5:** Slip extraction…")
+            with st.status("Processing slips…", expanded=True) as status:
+                try:
                     TMP_SLIPS.mkdir(parents=True, exist_ok=True)
-                    slip_paths: list[Path] = []
-                    for fname, blob in slip_metas:
-                        tp = TMP_SLIPS / f"{stem}_{fname}"
-                        tp.write_bytes(blob)
-                        slip_paths.append(tp)
-                    slip_engine = SlipExtractionEngine(openai_key=openai_key)
-                    recs = slip_engine.extract_many(slip_paths)
                     OUT_SLIP.mkdir(parents=True, exist_ok=True)
-                    p3j = OUT_SLIP / f"{stem}_slips.json"
-                    p3x = OUT_SLIP / f"{stem}_slips.xlsx"
-                    slip_engine.save_outputs(recs, p3j, p3x)
-                    slip_terms: dict[str, Any] | None = recs[0] if recs else None
-                    status_ctx.write(f"Step 3/5: Slip extraction… ✅ Done ({len(slip_metas)} PDFs processed)")
 
-                    status_ctx.markdown("**Step 4/5:** Mapping codes…")
-                    mapper = MappingEngine()
-                    df = mapper.map_dataframe(df)
-                    OUT_MAP.mkdir(parents=True, exist_ok=True)
-                    p4 = OUT_MAP / f"{stem}_mapped.xlsx"
-                    df.to_excel(p4, index=False)
-                    status_ctx.write(f"Step 4/5: Mapping codes… ✅ Done ({len(df)} mapped)")
+                    slip_paths: list[Path] = []
+                    for uf in slips:
+                        tp = TMP_SLIPS / uf.name
+                        tp.write_bytes(uf.getvalue())
+                        slip_paths.append(tp)
 
-                    status_ctx.markdown("**Step 5/5:** Building import files…")
-                    OUT_IMP.mkdir(parents=True, exist_ok=True)
-                    builder = ModelBuilderEngine()
-                    built = builder.build(df, slip_terms, OUT_IMP, stem=stem)
+                    engine = SlipExtractionEngine(openai_key=openai_key)
+                    records: list[dict[str, Any]] = []
+                    for p in slip_paths:
+                        status.write(f"Analyzing **{p.name}**…")
+                        rec = engine.extract_file(p)
+                        records.append(rec)
+                        status.write(
+                            f"**{p.name}** — TIV: {_fmt_money(rec.get('tiv'))} · "
+                            f"{len(rec.get('limits_sublimits') or [])} limits · "
+                            f"{len(rec.get('deductibles') or [])} deductibles"
+                        )
 
-                    paths_out: dict[str, Path] = {
-                        "scrubbed": p1,
-                        "geocoded": p2,
-                        "slips_json": p3j,
-                        "slips_xlsx": p3x,
-                        "mapped": p4,
-                        "rms_locations": Path(built["rms_locations"]),
-                        "rms_accounts": Path(built["rms_accounts"]),
-                        "air_csv": Path(built["air_csv"]),
+                    stem = Path(slips[0].name).stem
+                    if len(slips) > 1:
+                        stem = "batch_slips"
+                    json_path = OUT_SLIP / f"{stem}_extracted.json"
+                    xlsx_path = OUT_SLIP / f"{stem}_extracted.xlsx"
+                    engine.save_outputs(records, json_path, xlsx_path)
+
+                    elapsed = round(time.perf_counter() - t0, 1)
+                    st.session_state.slip_records = records
+                    st.session_state.slip_paths = {"json": str(json_path), "xlsx": str(xlsx_path)}
+                    st.session_state.slip_stats = {
+                        "slip_count": len(records),
+                        "elapsed_sec": elapsed,
+                        "total_limits": sum(len(r.get("limits_sublimits") or []) for r in records),
+                        "total_deductibles": sum(len(r.get("deductibles") or []) for r in records),
                     }
-                    status_ctx.write("Step 5/5: Building import files… ✅ Done")
+                    st.session_state.slip_completed = True
+                    status.update(label="Extraction complete", state="complete")
+                    st.rerun()
 
-                elapsed = round(time.perf_counter() - t0, 1)
-                st.session_state.smartcat_paths = paths_out
-                st.session_state.smartcat_stats = {
-                    "rows": len(df),
-                    "slips": len(slip_metas),
-                    "geocode": gb,
-                    "geocode_rate_pct": round(100.0 * gb["with_coords"] / max(len(df), 1), 1),
-                    "elapsed_sec": elapsed,
-                }
-                st.session_state.smartcat_completed = True
-                st.session_state.smartcat_stem = stem
-                log.info("Pipeline OK stem=%s rows=%s elapsed=%ss", stem, len(df), elapsed)
+                except Exception as e:
+                    log.exception("Slip extraction failed: %s", e)
+                    st.session_state.slip_error = f"{type(e).__name__}: {e}"
+                    st.session_state.slip_traceback = traceback.format_exc()
+                    status.update(label="Extraction failed", state="error")
 
-                if hasattr(status_ctx, "update"):
-                    status_ctx.update(label="✅ All steps complete", state="complete")
-
-                try:
-                    st.balloons()
-                except Exception:
-                    pass
-                try:
-                    st.toast("Import files are ready — scroll down to download.", icon="🎉")
-                except Exception:
-                    pass
-
-            except Exception as e:
-                log.exception("Pipeline failed: %s", e)
-                tb = traceback.format_exc()
-                st.session_state.smartcat_error = f"{type(e).__name__}: {e}"
-                st.session_state.smartcat_traceback = tb
-                st.session_state.smartcat_completed = False
-                if hasattr(status_ctx, "update"):
-                    status_ctx.update(label="Pipeline failed", state="error")
-                st.error(f"Pipeline failed — stopped. **{type(e).__name__}:** {e}")
-                with st.expander("Technical details (traceback)"):
-                    st.code(tb, language="python")
+        st.markdown(
+            f"""<div class="exl-footer">
+            &copy; 2026 <strong>EXL</strong> · SmartCAT.AI · Insurance Slip Intelligence Platform
+            <div class="exl-footer-credit">Designed &amp; developed by <b>Satyam Mishra</b></div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
 
 
 if __name__ == "__main__":
