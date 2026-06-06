@@ -111,7 +111,7 @@ TIV_NOTES = re.compile(
 
 SUBLIMIT_PERIL = re.compile(
     r"(Earth\s+Movement|Earthquake|Flood|Named\s+Storm|Named\s+Windstorm|Wind|Hurricane|Wildfire)"
-    r"[^\n\$]{0,120}?"
+    r"(?:(?!except:|Hazard Area|not otherwise excluded)[^\n\$]){0,120}?"
     r"((?:US)?\$[\d,]+(?:\.\d+)?|Excluded|Included|N/A)",
     re.I,
 )

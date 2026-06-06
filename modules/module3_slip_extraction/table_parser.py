@@ -41,6 +41,177 @@ DEDUCTIBLE_SECTION = re.compile(r"deductible", re.I)
 WAITING_KEYWORDS = ("waiting period", "hours", " days", " day")
 
 
+def _normalize_prose_blob(text: str) -> str:
+    """Normalize OCR quirks in legal prose slips (USS15, USS$15, extra zeros)."""
+    blob = text
+    blob = re.sub(r"USS\$", "$", blob)
+    blob = re.sub(r"USS(?=\d)", "$", blob)
+    blob = re.sub(r"US\$(?=\d)", "$", blob)
+    blob = re.sub(r"(\d),(\d{3}),(\d{3})0\b", r"\1,\2,\3", blob)  # 50,000,0000 → 50,000,000
+    blob = re.sub(r"\$\s+", "$", blob)
+    return blob
+
+
+def parse_prose_limits(text: str, source_file: str = "") -> list[dict[str, Any]]:
+    """Extract limits from narrative / legal prose (Sample 4 style)."""
+    rows: list[dict[str, Any]] = []
+    blob = _normalize_prose_blob(text)
+
+    def _add(
+        desc: str,
+        amount: str | None = None,
+        *,
+        row_type: str = "sublimit",
+        peril: str | None = None,
+        code: str | None = None,
+        region: str | None = None,
+        status: str = "active",
+        basis: str = "annual_aggregate",
+        parent: str | None = None,
+    ) -> None:
+        key = f"{desc}|{amount}|{status}"
+        if any(f"{r.get('description')}|{r.get('amount')}|{r.get('status')}" == key for r in rows):
+            return
+        rows.append(
+            {
+                "source_file": source_file,
+                "row_type": row_type,
+                "description": desc,
+                "peril": peril or desc.split(" - ")[0][:80],
+                "peril_code": code or _detect_peril(desc)[1],
+                "region": region,
+                "amount": pl.clean_money(amount) if amount and status == "active" else None,
+                "currency": "USD" if amount else None,
+                "status": status,
+                "basis": basis,
+                "parent_peril": parent,
+                "rms_field": "PARTOF",
+            }
+        )
+
+    m = re.search(r"program\s+limit\s+of\s+liability\s+is\s+\$([\d,]+)", blob, re.I)
+    if m:
+        _add("Program Limit of Liability", f"${m.group(1)}", row_type="limit", basis="occurrence")
+
+    m = re.search(
+        r"peril\s+of\s+Flood,.*?proportionate share of\s*\$([\d,]+)",
+        blob,
+        re.I | re.S,
+    )
+    if m:
+        _add("Flood — Policy Aggregate", f"${m.group(1)}", peril="Flood", code="FL", parent=None)
+
+    m = re.search(
+        r"not to exceed\s+\$([\d,]+)[^;]{0,220}Special Flood Hazard Areas",
+        blob,
+        re.I | re.S,
+    )
+    if not m:
+        m = re.search(
+            r"Special Flood Hazard Areas.*?not to exceed\s+\$([\d,]+)",
+            blob,
+            re.I | re.S,
+        )
+    if m:
+        _add(
+            "Flood — Special Flood Hazard Areas",
+            f"${m.group(1)}",
+            peril="Flood",
+            code="FL",
+            region="SFHA",
+            parent="Flood",
+        )
+
+    m = re.search(
+        r"peril\s+of\s+Earthquake,.*?proportionate share of\s*\$([\d,]+)",
+        blob,
+        re.I | re.S,
+    )
+    if m:
+        _add("Earthquake — Policy Aggregate", f"${m.group(1)}", peril="Earthquake", code="EQ")
+
+    if re.search(
+        r"\(i\)[^;]{0,120}Excluded[^;]{0,80}California|Excluded[^;]{0,40}State of California",
+        blob,
+        re.I | re.S,
+    ):
+        _add(
+            "Earthquake — California",
+            None,
+            peril="Earthquake",
+            code="EQ",
+            region="California",
+            status="excluded",
+            parent="Earthquake",
+        )
+
+    m = re.search(r"\(ii\)[^$]*?\$([\d,]+)[^;]{0,80}New Madrid", blob, re.I | re.S)
+    if m:
+        _add(
+            "Earthquake — New Madrid",
+            f"${m.group(1)}",
+            peril="Earthquake",
+            code="EQ",
+            region="New Madrid",
+            parent="Earthquake",
+        )
+
+    m = re.search(r"\(iii\)[^$]*?\$([\d,]+)[^;]{0,80}Pacific Northwest", blob, re.I | re.S)
+    if m:
+        _add(
+            "Earthquake — Pacific Northwest",
+            f"${m.group(1)}",
+            peril="Earthquake",
+            code="EQ",
+            region="Pacific Northwest",
+            parent="Earthquake",
+        )
+
+    m = re.search(r"\(iv\)[^$]*?\$([\d,]+)[^;]{0,80}all other Earthquake", blob, re.I | re.S)
+    if m:
+        _add(
+            "Earthquake — All Other",
+            f"${m.group(1)}",
+            peril="Earthquake",
+            code="EQ",
+            parent="Earthquake",
+        )
+
+    m = re.search(
+        r"peril\s+of\s+Named Windstorm.*?proportionate share\s*\n?\s*of\s+\$([\d,]+)",
+        blob,
+        re.I | re.S,
+    )
+    if m:
+        _add("Named Windstorm", f"${m.group(1)}", peril="Named Windstorm", code="WS")
+
+    m = re.search(r"\$([\d,]+)\s+with respect to property in transit", blob, re.I | re.S)
+    if m:
+        _add("Property in Transit", f"${m.group(1)}", row_type="coverage_extension")
+
+    m = re.search(
+        r"\(e\)\s*\$([\d,]+)\s+with respect to property while in the course of construction",
+        blob,
+        re.I | re.S,
+    )
+    if m:
+        _add(
+            "Construction / Erection",
+            f"${m.group(1)}",
+            row_type="coverage_extension",
+        )
+
+    m = re.search(r"Earth Movement,.*?aggregate[^$]{0,80}\$([\d,]+)", blob, re.I | re.S)
+    if m:
+        _add("Earth Movement — Aggregate", f"${m.group(1)}", peril="Earth Movement", code="EQ")
+
+    m = re.search(r"Flood,.*?annual aggregate[^$]{0,80}\$([\d,]+)", blob, re.I | re.S)
+    if m and not any(r.get("peril") == "Flood" for r in rows):
+        _add("Flood — Aggregate", f"${m.group(1)}", peril="Flood", code="FL")
+
+    return rows
+
+
 def parse_limit_rows(text: str, source_file: str = "") -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     in_deductible = False
@@ -227,6 +398,12 @@ def _split_row(line: str) -> tuple[str, str] | None:
 
 def _build_limit_row(desc: str, val: str, source_file: str) -> dict[str, Any] | None:
     if len(desc) < 3:
+        return None
+
+    lower_desc = desc.lower().strip()
+    if re.match(r"^tiv\s*:", lower_desc) or re.match(r"^e\s+n\.b\.", lower_desc):
+        return None
+    if re.match(r"^\d{1,3}$", lower_desc):
         return None
 
     peril, code = _detect_peril(desc)

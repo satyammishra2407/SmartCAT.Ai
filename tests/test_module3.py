@@ -82,10 +82,15 @@ def test_real_sample_pdfs(path: Path):
     engine = SlipExtractionEngine()
     rec = engine.extract_file(path)
     assert rec["source_file"] == path.name
-    # Scanned PDFs may have sparse text without Tesseract; engine should still return structure
     assert "limits_sublimits" in rec
     assert "deductibles" in rec
     assert rec["confidence_score"] >= 0
+    if path.name == "Sample 4.pdf":
+        limits = {r["description"]: r.get("amount") for r in rec["limits_sublimits"]}
+        assert limits.get("Program Limit of Liability") == "50000000"
+        assert limits.get("Earthquake — Policy Aggregate") == "15000000"
+        assert limits.get("Named Windstorm") == "50000000"
+        assert len(rec["limits_sublimits"]) >= 8
 
 
 def test_schema_file_exists():

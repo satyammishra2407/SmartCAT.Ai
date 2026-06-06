@@ -7,6 +7,7 @@ sublimits, deductibles, participation, SIR, waiting periods, and CAT perils.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 import logging
 import os
 import time
@@ -71,9 +72,16 @@ def _inject_exl_styles() -> None:
         div[data-testid="stSidebarCollapsedControl"] {{ display: none !important; }}
         header[data-testid="stHeader"] {{
             background: {EXL_WHITE} !important;
-            border-bottom: 1px solid {EXL_GREY_LIGHT};
+            border-bottom: none !important;
+            height: 0 !important;
+            min-height: 0 !important;
+            visibility: hidden !important;
+            overflow: hidden !important;
         }}
         #MainMenu, footer {{ visibility: hidden; }}
+        [data-testid="stToolbar"] {{
+            display: none !important;
+        }}
 
         /* Force light theme CSS vars (Streamlit Cloud dark-theme override) */
         :root {{
@@ -98,14 +106,112 @@ def _inject_exl_styles() -> None:
 
         .block-container {{
             padding-top: 0 !important;
-            max-width: 1180px;
+            padding-left: 2rem !important;
+            padding-right: 2rem !important;
+            padding-bottom: 2rem !important;
+            max-width: 1080px !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }}
+        [data-testid="stMainBlockContainer"] {{
+            padding-top: 0 !important;
+        }}
+
+        /* Unified page shell — header + sections share same width */
+        .exl-site-header {{
+            background: {EXL_WHITE};
+            border: 1px solid {EXL_GREY_LIGHT};
+            border-radius: 8px;
+            margin-bottom: 1.25rem;
+            margin-top: 0.35rem;
+            overflow: visible;
+        }}
+
+        /* ── Animations ── */
+        @keyframes exlFadeInUp {{
+            from {{ opacity: 0; transform: translateY(18px); }}
+            to {{ opacity: 1; transform: translateY(0); }}
+        }}
+        @keyframes exlFadeIn {{
+            from {{ opacity: 0; }}
+            to {{ opacity: 1; }}
+        }}
+        @keyframes exlSlideIn {{
+            from {{ opacity: 0; transform: translateX(-12px); }}
+            to {{ opacity: 1; transform: translateX(0); }}
+        }}
+        @keyframes exlPulse {{
+            0%, 100% {{ transform: scale(1); box-shadow: 0 0 0 0 rgba(232,78,14,0.45); }}
+            50% {{ transform: scale(1.08); box-shadow: 0 0 0 6px rgba(232,78,14,0); }}
+        }}
+        @keyframes exlGradientShift {{
+            0% {{ background-position: 0% 50%; }}
+            50% {{ background-position: 100% 50%; }}
+            100% {{ background-position: 0% 50%; }}
+        }}
+        @keyframes exlRowIn {{
+            from {{ opacity: 0; transform: translateX(-6px); }}
+            to {{ opacity: 1; transform: translateX(0); }}
+        }}
+        @keyframes exlShine {{
+            0% {{ left: -100%; }}
+            100% {{ left: 200%; }}
+        }}
+
+        .exl-animate-in {{
+            animation: exlFadeInUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }}
+        .exl-animate-in-slow {{
+            animation: exlFadeInUp 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }}
+        .exl-topbar {{
+            animation: exlFadeIn 0.45s ease-out both;
+        }}
+        .exl-navstrip {{
+            animation: exlSlideIn 0.5s ease-out 0.05s both;
+        }}
+        .exl-hero {{
+            animation: exlFadeInUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.08s both;
+        }}
+        .exl-section {{
+            animation: exlFadeInUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }}
+        .exl-metric {{
+            animation: exlFadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+            transition: transform 0.25s ease, box-shadow 0.25s ease;
+        }}
+        .exl-metric:nth-child(1) {{ animation-delay: 0.05s; }}
+        .exl-metric:nth-child(2) {{ animation-delay: 0.12s; }}
+        .exl-metric:nth-child(3) {{ animation-delay: 0.19s; }}
+        .exl-metric:nth-child(4) {{ animation-delay: 0.26s; }}
+        .exl-metric:hover {{
+            transform: translateY(-3px);
+            box-shadow: 0 8px 22px rgba(232,78,14,0.12);
+        }}
+        .exl-success-banner {{
+            animation: exlFadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }}
+        .exl-data-table {{
+            animation: exlFadeInUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }}
+        .exl-data-table tbody tr {{
+            animation: exlRowIn 0.35s ease-out both;
+        }}
+        .exl-data-table tbody tr:nth-child(1) {{ animation-delay: 0.03s; }}
+        .exl-data-table tbody tr:nth-child(2) {{ animation-delay: 0.06s; }}
+        .exl-data-table tbody tr:nth-child(3) {{ animation-delay: 0.09s; }}
+        .exl-data-table tbody tr:nth-child(4) {{ animation-delay: 0.12s; }}
+        .exl-data-table tbody tr:nth-child(5) {{ animation-delay: 0.15s; }}
+        .exl-data-table tbody tr:nth-child(n+6) {{ animation-delay: 0.18s; }}
+        .exl-tab-panel {{
+            animation: exlFadeInUp 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
         }}
 
         /* ── Header (Planet EXL style) ── */
         .exl-topbar {{
             background: {EXL_WHITE};
-            margin: -1rem -1rem 0 -1rem;
-            padding: 0.85rem 2rem;
+            margin: 0;
+            padding: 0.95rem 1.5rem 0.85rem;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -115,19 +221,22 @@ def _inject_exl_styles() -> None:
             display: flex;
             align-items: baseline;
             gap: 6px;
+            line-height: 1.25;
         }}
         .exl-logo-mark {{
             color: {EXL_ORANGE};
             font-weight: 800;
             font-size: 1.55rem;
             letter-spacing: -0.03em;
-            line-height: 1;
+            line-height: 1.25;
+            padding-top: 1px;
         }}
         .exl-logo-text {{
             color: {EXL_GREY_MID};
             font-weight: 600;
             font-size: 1.05rem;
             letter-spacing: -0.01em;
+            line-height: 1.25;
         }}
         .exl-topbar-right {{
             text-align: right;
@@ -145,8 +254,8 @@ def _inject_exl_styles() -> None:
         /* ── Nav strip ── */
         .exl-navstrip {{
             background: {EXL_GREY_NAV};
-            margin: 0 -1rem;
-            padding: 0.55rem 2rem;
+            margin: 0;
+            padding: 0.55rem 1.5rem;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -172,9 +281,8 @@ def _inject_exl_styles() -> None:
         /* ── Hero ── */
         .exl-hero {{
             background: {EXL_WHITE};
-            border-bottom: 1px solid {EXL_GREY_LIGHT};
-            margin: 0 -1rem;
-            padding: 1.75rem 2rem 1.5rem;
+            margin: 0;
+            padding: 1.5rem 1.5rem 1.35rem;
         }}
         .exl-hero-tag {{
             display: inline-block;
@@ -197,7 +305,12 @@ def _inject_exl_styles() -> None:
             line-height: 1.2;
         }}
         .exl-hero h1 span {{
-            color: {EXL_ORANGE};
+            background: linear-gradient(120deg, {EXL_ORANGE}, #FF7040, {EXL_ORANGE_DARK}, {EXL_ORANGE});
+            background-size: 250% auto;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: exlGradientShift 5s ease infinite;
         }}
         .exl-hero p {{
             color: {EXL_GREY_DARK};
@@ -207,22 +320,105 @@ def _inject_exl_styles() -> None:
             line-height: 1.55;
         }}
 
-        /* ── Section cards ── */
-        .exl-section {{
-            background: {EXL_WHITE};
-            border: 1px solid {EXL_GREY_LIGHT};
-            border-radius: 8px;
-            padding: 1.5rem 1.75rem;
-            margin-bottom: 1rem;
+        /* Section card — symmetric horizontal inset for all body content */
+        div[data-testid="stVerticalBlock"]:has(.exl-section-marker):not(
+            :has(div[data-testid="stVerticalBlock"] .exl-section-marker)
+        ) {{
+            background: {EXL_WHITE} !important;
+            border: 1px solid {EXL_GREY_LIGHT} !important;
+            border-radius: 8px !important;
+            margin-bottom: 1.25rem !important;
+            padding: 0 1.25rem 1.25rem 1.25rem !important;
+            overflow: hidden !important;
+            animation: exlFadeInUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+            box-sizing: border-box !important;
+        }}
+        div[data-testid="stVerticalBlock"]:has(.exl-section-marker):not(
+            :has(div[data-testid="stVerticalBlock"] .exl-section-marker)
+        ) [data-testid="element-container"] {{
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+        }}
+        div[data-testid="stVerticalBlock"]:has(.exl-section-marker):not(
+            :has(div[data-testid="stVerticalBlock"] .exl-section-marker)
+        ) [data-testid="stButton"],
+        div[data-testid="stVerticalBlock"]:has(.exl-section-marker):not(
+            :has(div[data-testid="stVerticalBlock"] .exl-section-marker)
+        ) [data-testid="stDownloadButton"],
+        div[data-testid="stVerticalBlock"]:has(.exl-section-marker):not(
+            :has(div[data-testid="stVerticalBlock"] .exl-section-marker)
+        ) [data-testid="stFileUploader"],
+        div[data-testid="stVerticalBlock"]:has(.exl-section-marker):not(
+            :has(div[data-testid="stVerticalBlock"] .exl-section-marker)
+        ) [data-testid="stCaptionContainer"],
+        div[data-testid="stVerticalBlock"]:has(.exl-section-marker):not(
+            :has(div[data-testid="stVerticalBlock"] .exl-section-marker)
+        ) [data-testid="stMarkdownContainer"] {{
+            width: 100% !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+        }}
+        div[data-testid="stVerticalBlock"]:has(.exl-section-marker):not(
+            :has(div[data-testid="stVerticalBlock"] .exl-section-marker)
+        ) [data-testid="stButton"] > button,
+        div[data-testid="stVerticalBlock"]:has(.exl-section-marker):not(
+            :has(div[data-testid="stVerticalBlock"] .exl-section-marker)
+        ) [data-testid="stDownloadButton"] > button {{
+            width: 100% !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+        }}
+        div[data-testid="stVerticalBlock"]:has(.exl-section-marker):not(
+            :has(div[data-testid="stVerticalBlock"] .exl-section-marker)
+        ) .exl-section-header {{
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 0 -1.25rem 1.25rem -1.25rem;
+            padding: 0.85rem 1.25rem 0.85rem 1rem;
+            background: {EXL_GREY_SECTION};
+            border-bottom: 1px solid {EXL_GREY_LIGHT};
+            box-sizing: border-box;
+        }}
+        div[data-testid="stVerticalBlock"]:has(.exl-section-marker):not(
+            :has(div[data-testid="stVerticalBlock"] .exl-section-marker)
+        ) .exl-section-header .exl-section-sub {{
+            padding-right: 0.25rem;
+        }}
+        .exl-section-header-stacked {{
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.35rem;
+            padding: 0.85rem 1.25rem 0.85rem 1rem;
+        }}
+        .exl-section-header-row {{
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+        }}
+        .exl-section-header-stacked .exl-section-sub {{
+            margin-left: 36px;
+            margin-top: 0;
+            padding-left: 0;
+            padding-right: 0;
+            text-align: left;
+        }}
+        .exl-section-marker {{
+            display: none !important;
+            height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
         }}
         .exl-section-header {{
             display: flex;
             align-items: center;
             gap: 10px;
-            margin: -1.5rem -1.75rem 1.1rem;
-            padding: 0.7rem 1.75rem;
-            background: {EXL_GREY_SECTION};
-            border-bottom: 1px solid {EXL_GREY_LIGHT};
+            flex-wrap: wrap;
+            box-sizing: border-box;
         }}
         .exl-step-num {{
             background: {EXL_ORANGE};
@@ -242,11 +438,16 @@ def _inject_exl_styles() -> None:
             font-weight: 700;
             color: {EXL_BLACK};
             letter-spacing: -0.01em;
+            flex: 1 1 auto;
+            min-width: 0;
         }}
         .exl-section-sub {{
-            font-size: 0.8rem;
+            font-size: 0.78rem;
             color: {EXL_GREY_MID};
             margin-left: auto;
+            flex-shrink: 0;
+            text-align: right;
+            padding-right: 0;
         }}
 
         /* ── Metric cards ── */
@@ -260,25 +461,60 @@ def _inject_exl_styles() -> None:
             .exl-metrics {{ grid-template-columns: repeat(2, 1fr); }}
         }}
         .exl-metric {{
-            background: {EXL_GREY_BG};
+            background: {EXL_WHITE};
             border: 1px solid {EXL_GREY_LIGHT};
             border-left: 3px solid {EXL_ORANGE};
             border-radius: 6px;
             padding: 0.85rem 1rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
         }}
         .exl-metric-label {{
-            font-size: 0.72rem;
-            font-weight: 600;
-            color: {EXL_GREY_MID};
-            text-transform: uppercase;
-            letter-spacing: 0.07em;
-            margin-bottom: 4px;
-        }}
-        .exl-metric-value {{
-            font-size: 1.15rem;
+            font-size: 0.74rem;
             font-weight: 700;
             color: {EXL_BLACK};
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 6px;
+            line-height: 1.3;
+        }}
+        .exl-metric-value {{
+            font-size: 1.2rem;
+            font-weight: 800;
+            color: {EXL_BLACK};
             letter-spacing: -0.02em;
+        }}
+        .exl-conf-high {{ color: #0D7A3E !important; }}
+        .exl-conf-mid {{ color: {EXL_ORANGE} !important; }}
+        .exl-conf-low {{ color: #C0392B !important; }}
+
+        .exl-slip-title {{
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1rem;
+            font-weight: 700;
+            color: {EXL_BLACK};
+            margin-bottom: 0.85rem;
+            padding: 0.65rem 1rem;
+            background: {EXL_WHITE};
+            border: 1px solid {EXL_GREY_LIGHT};
+            border-left: 4px solid {EXL_ORANGE};
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }}
+        .exl-slip-title-icon {{
+            font-size: 1.1rem;
+        }}
+
+        /* ── Detail panel ── */
+        .exl-detail-panel {{
+            background: {EXL_WHITE};
+            border: 1px solid {EXL_GREY_LIGHT};
+            border-radius: 6px;
+            padding: 0.85rem 1.1rem;
+            margin-top: 0.75rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+            animation: exlFadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.3s both;
         }}
 
         /* ── Success banner ── */
@@ -299,6 +535,7 @@ def _inject_exl_styles() -> None:
             background: {EXL_ORANGE};
             border-radius: 50%;
             flex-shrink: 0;
+            animation: exlPulse 2.2s ease-in-out infinite;
         }}
         .exl-success-text {{
             font-size: 0.9rem;
@@ -331,16 +568,14 @@ def _inject_exl_styles() -> None:
         /* ── Footer ── */
         .exl-footer {{
             text-align: center;
-            padding: 1.25rem 0 0.75rem;
+            padding: 1.25rem 1.5rem 0.75rem;
             font-size: 0.75rem;
             color: {EXL_GREY_MID};
             border-top: 1px solid {EXL_GREY_LIGHT};
             margin-top: 2rem;
             background: {EXL_WHITE};
-            margin-left: -1rem;
-            margin-right: -1rem;
-            padding-left: 1rem;
-            padding-right: 1rem;
+            border-radius: 8px;
+            border: 1px solid {EXL_GREY_LIGHT};
         }}
         .exl-footer strong {{
             color: {EXL_ORANGE};
@@ -444,8 +679,20 @@ def _inject_exl_styles() -> None:
             font-size: 0.9rem !important;
             letter-spacing: 0.02em !important;
             padding: 0.65rem 1.5rem !important;
-            transition: background 0.2s, transform 0.15s !important;
+            transition: background 0.2s, transform 0.2s, box-shadow 0.2s !important;
             box-shadow: 0 2px 8px rgba(240,90,40,0.25) !important;
+            position: relative;
+            overflow: hidden;
+        }}
+        div[data-testid="stButton"] > button[kind="primary"]::after {{
+            content: "";
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 60%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent);
+            animation: exlShine 3.5s ease-in-out infinite;
         }}
         div[data-testid="stButton"] > button[kind="primary"]:hover:not(:disabled) {{
             background: {EXL_ORANGE_DARK} !important;
@@ -485,43 +732,62 @@ def _inject_exl_styles() -> None:
         }}
 
         div[data-testid="stMetric"] {{
-            background: {EXL_GREY_BG};
+            background: {EXL_WHITE};
             border: 1px solid {EXL_GREY_LIGHT};
             border-left: 3px solid {EXL_ORANGE};
             border-radius: 6px;
             padding: 0.75rem 1rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
         }}
-        div[data-testid="stMetricLabel"] {{
-            font-size: 0.72rem !important;
-            font-weight: 600 !important;
-            color: {EXL_GREY_MID} !important;
-            text-transform: uppercase !important;
-            letter-spacing: 0.06em !important;
-        }}
-        div[data-testid="stMetricValue"] {{
-            font-size: 1.2rem !important;
+        div[data-testid="stMetricLabel"],
+        div[data-testid="stMetricLabel"] p,
+        div[data-testid="stMetricLabel"] label,
+        div[data-testid="stMetricLabel"] span {{
+            font-size: 0.74rem !important;
             font-weight: 700 !important;
+            color: {EXL_BLACK} !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.05em !important;
+            opacity: 1 !important;
+        }}
+        div[data-testid="stMetricValue"],
+        div[data-testid="stMetricValue"] div {{
+            font-size: 1.2rem !important;
+            font-weight: 800 !important;
             color: {EXL_BLACK} !important;
         }}
 
         .stTabs [data-baseweb="tab-list"] {{
-            gap: 4px;
+            gap: 6px;
             background: {EXL_GREY_BG};
-            border-radius: 8px;
-            padding: 4px;
+            border-radius: 10px;
+            padding: 6px;
             border: 1px solid {EXL_GREY_LIGHT};
+            margin-bottom: 0.75rem;
         }}
         .stTabs [data-baseweb="tab"] {{
-            border-radius: 5px !important;
+            border-radius: 8px !important;
             font-weight: 600 !important;
-            font-size: 0.82rem !important;
+            font-size: 0.78rem !important;
             color: {EXL_GREY_DARK} !important;
-            padding: 6px 14px !important;
+            padding: 8px 14px !important;
+            background: {EXL_WHITE} !important;
+            border: 1px solid {EXL_GREY_LIGHT} !important;
+            transition: all 0.2s ease !important;
+        }}
+        .stTabs [data-baseweb="tab"]:hover {{
+            border-color: {EXL_ORANGE} !important;
+            color: {EXL_ORANGE} !important;
         }}
         .stTabs [aria-selected="true"] {{
-            background: {EXL_WHITE} !important;
-            color: {EXL_ORANGE} !important;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.08) !important;
+            background: {EXL_ORANGE} !important;
+            color: {EXL_WHITE} !important;
+            border-color: {EXL_ORANGE} !important;
+            box-shadow: 0 4px 12px rgba(232,78,14,0.25) !important;
+        }}
+        .stTabs [data-baseweb="tab-panel"] {{
+            padding-top: 0.5rem;
+            animation: exlFadeInUp 0.35s ease-out both;
         }}
 
         div[data-testid="stExpander"] {{
@@ -550,31 +816,69 @@ def _inject_exl_styles() -> None:
             letter-spacing: -0.02em !important;
         }}
 
-        /* ── Data tables (light grey, black text) ── */
+        /* ── Data tables: HTML fallback for reliable display on themed deploys ── */
         div[data-testid="stDataFrame"] {{
-            border: 1px solid {EXL_GREY_LIGHT} !important;
-            border-radius: 6px !important;
-            overflow: hidden !important;
-            --gdg-bg-cell: {EXL_WHITE};
-            --gdg-bg-header: {EXL_GREY_SECTION};
-            --gdg-bg-header-has-focus: #E0E0E0;
-            --gdg-bg-header-hovered: #E0E0E0;
-            --gdg-text-dark: {EXL_BLACK};
-            --gdg-text-header: {EXL_BLACK};
-            --gdg-text-header-selected: {EXL_ORANGE};
-            --gdg-text-medium: {EXL_GREY_DARK};
-            --gdg-border-color: {EXL_GREY_LIGHT};
-            --gdg-horizontal-border-color: {EXL_GREY_LIGHT};
-            --gdg-vertical-border-color: {EXL_GREY_LIGHT};
+            border: 1px solid {EXL_GREY_LIGHT};
+            border-radius: 6px;
         }}
-        div[data-testid="stDataFrame"] > div,
-        div[data-testid="stDataFrame"] [data-testid="glideDataEditor"],
-        div[data-testid="stDataFrame"] [class*="glide"] {{
+        .exl-data-table {{
+            border: 1px solid {EXL_GREY_LIGHT};
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 0.5rem 0 1rem;
+            background: {EXL_WHITE};
+        }}
+        .exl-data-table table {{
+            width: 100%;
+            border-collapse: collapse;
+            background: {EXL_WHITE} !important;
+            color: {EXL_BLACK} !important;
+            font-size: 0.84rem;
+        }}
+        .exl-data-table thead th {{
+            background: {EXL_GREY_SECTION} !important;
+            color: {EXL_BLACK} !important;
+            font-weight: 700;
+            font-size: 0.82rem;
+            padding: 0.55rem 0.75rem;
+            text-align: left;
+            border-bottom: 2px solid {EXL_GREY_LIGHT};
+            white-space: nowrap;
+        }}
+        .exl-data-table tbody td {{
+            background: {EXL_WHITE} !important;
+            color: {EXL_BLACK} !important;
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid {EXL_GREY_LIGHT};
+            vertical-align: top;
+        }}
+        .exl-data-table tbody tr:nth-child(even) td {{
             background: {EXL_GREY_BG} !important;
+        }}
+        div[data-testid="stTable"] {{
+            border: 1px solid {EXL_GREY_LIGHT};
+            border-radius: 6px;
+            overflow-x: auto;
+        }}
+        div[data-testid="stTable"] table {{
+            background: {EXL_WHITE} !important;
             color: {EXL_BLACK} !important;
         }}
-        div[data-testid="stDataFrame"] canvas {{
+        div[data-testid="stTable"] thead th {{
+            background: {EXL_GREY_SECTION} !important;
+            color: {EXL_BLACK} !important;
+            font-weight: 700 !important;
+            font-size: 0.82rem !important;
+            border-bottom: 2px solid {EXL_GREY_LIGHT} !important;
+        }}
+        div[data-testid="stTable"] tbody td {{
             background: {EXL_WHITE} !important;
+            color: {EXL_BLACK} !important;
+            font-size: 0.84rem !important;
+            border-bottom: 1px solid {EXL_GREY_LIGHT} !important;
+        }}
+        div[data-testid="stTable"] tbody tr:nth-child(even) td {{
+            background: {EXL_GREY_BG} !important;
         }}
         </style>
         """,
@@ -585,27 +889,29 @@ def _inject_exl_styles() -> None:
 def _render_header() -> None:
     st.markdown(
         f"""
-        <div class="exl-topbar">
-            <div class="exl-logo">
-                <div class="exl-logo-mark">EXL</div>
-                <div class="exl-logo-text">SmartCAT.AI</div>
+        <div class="exl-site-header">
+            <div class="exl-topbar">
+                <div class="exl-logo">
+                    <div class="exl-logo-mark">EXL</div>
+                    <div class="exl-logo-text">SmartCAT.AI</div>
+                </div>
+                <div class="exl-topbar-right">
+                    <div class="exl-built-by">Built by <span>Satyam Mishra</span></div>
+                </div>
             </div>
-            <div class="exl-topbar-right">
-                <div class="exl-built-by">Built by <span>Satyam Mishra</span></div>
+            <div class="exl-navstrip">
+                <div class="exl-navstrip-links">
+                    <span class="active">Slip Extraction</span>
+                    <span>Insurance Intelligence</span>
+                </div>
+                <div class="exl-navstrip-tag">CAT Modelling · Slip Modelling</div>
             </div>
-        </div>
-        <div class="exl-navstrip">
-            <div class="exl-navstrip-links">
-                <span class="active">Slip Extraction</span>
-                <span>Insurance Intelligence</span>
+            <div class="exl-hero">
+                <div class="exl-hero-tag">Slip Modelling &amp; Extraction</div>
+                <h1>Smart<span>CAT</span>.AI</h1>
+                <p>Extract TIV, limits, sublimits, deductibles, participation, SIR, waiting periods,
+                and CAT peril terms from insurance slips — output to structured tables and Excel.</p>
             </div>
-            <div class="exl-navstrip-tag">CAT Modelling · Slip Modelling</div>
-        </div>
-        <div class="exl-hero">
-            <div class="exl-hero-tag">Slip Modelling &amp; Extraction</div>
-            <h1>Smart<span>CAT</span>.AI</h1>
-            <p>Extract TIV, limits, sublimits, deductibles, participation, SIR, waiting periods,
-            and CAT peril terms from insurance slips — output to structured tables and Excel.</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -613,6 +919,21 @@ def _render_header() -> None:
 
 
 def _render_section_header(step: int, title: str, subtitle: str = "") -> None:
+    use_stacked = bool(subtitle) and len(subtitle) > 22
+    if use_stacked:
+        st.markdown(
+            f"""
+            <div class="exl-section-header exl-section-header-stacked">
+                <div class="exl-section-header-row">
+                    <div class="exl-step-num">{step}</div>
+                    <div class="exl-section-title">{title}</div>
+                </div>
+                <div class="exl-section-sub">{subtitle}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        return
     sub_html = f'<span class="exl-section-sub">{subtitle}</span>' if subtitle else ""
     st.markdown(
         f"""
@@ -645,6 +966,66 @@ def _fmt_pct(val: Any) -> str:
         return str(val)
 
 
+MONEY_TABLE_COLS = frozenset({
+    "amount", "min_amount", "max_amount", "primary_limit",
+    "tiv", "limit_of_liability", "blanket_limit", "aggregate_limit",
+})
+PCT_TABLE_COLS = frozenset({"pct", "participation_pct", "coinsurance_pct"})
+
+
+def _is_empty_val(val: Any) -> bool:
+    if val is None:
+        return True
+    if isinstance(val, float) and pd.isna(val):
+        return True
+    s = str(val).strip().lower()
+    return s in ("", "none", "nan", "—")
+
+
+def _conf_class(score: Any) -> str:
+    try:
+        n = float(score)
+    except (TypeError, ValueError):
+        return "exl-conf-mid"
+    if n >= 70:
+        return "exl-conf-high"
+    if n >= 40:
+        return "exl-conf-mid"
+    return "exl-conf-low"
+
+
+def _status_pill(status: Any) -> str:
+    if _is_empty_val(status):
+        return "—"
+    icons = {
+        "active": "🟢",
+        "excluded": "🔴",
+        "included": "🔵",
+        "n/a": "⚪",
+        "na": "⚪",
+    }
+    s = str(status).strip().lower()
+    icon = icons.get(s, "•")
+    return f"{icon} {str(status).strip().title()}"
+
+
+def _format_table_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Format money/pct columns and status pills for HTML table display."""
+    if df.empty:
+        return df
+    out = df.copy()
+    for col in out.columns:
+        if col == "status":
+            out[col] = out[col].apply(_status_pill)
+        elif col in MONEY_TABLE_COLS:
+            out[col] = out[col].apply(lambda v: _fmt_money(v) if not _is_empty_val(v) else "—")
+        elif col in PCT_TABLE_COLS:
+            out[col] = out[col].apply(lambda v: _fmt_pct(v) if not _is_empty_val(v) else "—")
+        else:
+            out[col] = out[col].apply(lambda v: "—" if _is_empty_val(v) else v)
+    return out
+
+
 def _display_df(df: pd.DataFrame) -> pd.DataFrame:
     """Replace None/NaN with em-dash for clean table display."""
     if df.empty:
@@ -657,6 +1038,76 @@ def _display_df(df: pd.DataFrame) -> pd.DataFrame:
             else v
         )
     return out
+
+
+def _render_data_table(df: pd.DataFrame) -> None:
+    """Render formatted table as HTML with animations."""
+    if df.empty:
+        st.caption("No rows to display.")
+        return
+    display = _format_table_df(df)
+    html = display.to_html(index=False, escape=True, border=0, na_rep="—")
+    st.markdown(f'<div class="exl-data-table exl-animate-in">{html}</div>', unsafe_allow_html=True)
+
+
+def _render_slip_tabs(rec: dict[str, Any], slip_idx: int) -> None:
+    """Tabbed slip detail view with badge counts and formatted tables."""
+    limits = rec.get("limits_sublimits") or []
+    deductibles = rec.get("deductibles") or []
+    waiting = rec.get("waiting_periods") or []
+    cat = rec.get("cat_peril_summary") or []
+    preview = rec.get("raw_text_preview") or ""
+
+    tab_labels = [
+        f"Limits & Sublimits ({len(limits)})",
+        f"Deductibles ({len(deductibles)})",
+        f"Waiting Periods ({len(waiting)})",
+        f"CAT Perils ({len(cat)})",
+        f"Source Text ({1 if preview else 0})",
+    ]
+
+    tabs = st.tabs(tab_labels)
+
+    with tabs[0]:
+        df_lim = pd.DataFrame(limits)
+        if not df_lim.empty:
+            show = [c for c in ["row_type", "peril", "region", "description", "amount", "status", "basis"] if c in df_lim.columns]
+            _render_data_table(df_lim[show])
+        else:
+            st.warning("No limit or sublimit rows were extracted from this slip.")
+
+    with tabs[1]:
+        df_ded = pd.DataFrame(deductibles)
+        if not df_ded.empty:
+            show = [
+                c for c in [
+                    "peril", "region", "hazard_zone", "coverage_type", "deductible_type",
+                    "amount", "pct", "min_amount", "max_amount", "basis",
+                ]
+                if c in df_ded.columns
+            ]
+            _render_data_table(df_ded[show])
+        else:
+            st.warning("No deductible rows were extracted from this slip.")
+
+    with tabs[2]:
+        df_w = pd.DataFrame(waiting)
+        if not df_w.empty:
+            _render_data_table(df_w)
+        else:
+            st.caption("No waiting periods identified.")
+
+    with tabs[3]:
+        df_cat = pd.DataFrame(cat)
+        if not df_cat.empty:
+            _render_data_table(
+                df_cat[["peril_code", "peril_name", "primary_limit", "limit_status", "sublimit_count", "deductible_count"]]
+            )
+        else:
+            st.caption("No CAT peril summary available.")
+
+    with tabs[4]:
+        st.text(preview[:2500] or "No source text extracted. Scanned PDFs require Tesseract OCR.")
 
 
 def _clear_all() -> None:
@@ -672,30 +1123,46 @@ def _clear_all() -> None:
 
 def _render_summary_metrics(rec: dict[str, Any]) -> None:
     part = rec.get("participation_pct") or rec.get("coinsurance_pct")
-    cols = st.columns(4)
-    fields = [
-        ("Total Insurable Value", _fmt_money(rec.get("tiv"))),
-        ("Program Limit", _fmt_money(rec.get("limit_of_liability"))),
-        ("Participation", _fmt_pct(part)),
-        ("Confidence Score", f"{rec.get('confidence_score', 0)}%"),
+    score = rec.get("confidence_score", 0)
+    conf_cls = _conf_class(score)
+    cards = [
+        ("Total Insurable Value", _fmt_money(rec.get("tiv")), ""),
+        ("Program Limit", _fmt_money(rec.get("limit_of_liability")), ""),
+        ("Participation", _fmt_pct(part), ""),
+        ("Confidence Score", f"{score}%", conf_cls),
     ]
-    for col, (label, val) in zip(cols, fields):
-        with col:
-            st.metric(label, val)
+    cards_html = "".join(
+        f'<div class="exl-metric">'
+        f'<div class="exl-metric-label">{label}</div>'
+        f'<div class="exl-metric-value {extra}">{val}</div>'
+        f"</div>"
+        for label, val, extra in cards
+    )
+    st.markdown(f'<div class="exl-metrics exl-animate-in-slow">{cards_html}</div>', unsafe_allow_html=True)
 
     st.markdown(
         f"""
-        <div class="exl-detail-grid">
-            <div class="exl-detail-item"><strong>Named Insured:</strong> {rec.get('named_insured') or '—'}</div>
-            <div class="exl-detail-item"><strong>SIR / Excess:</strong> {_fmt_money(rec.get('sir'))} / {_fmt_money(rec.get('excess_of'))}</div>
-            <div class="exl-detail-item"><strong>Policy Period:</strong> {rec.get('effective_date') or '—'} → {rec.get('expiration_date') or '—'}</div>
-            <div class="exl-detail-item"><strong>Blanket Deductible:</strong> {_fmt_money(rec.get('blanket_deductible'))}</div>
-            <div class="exl-detail-item"><strong>Min / Max Deductible:</strong> {_fmt_money(rec.get('min_deductible'))} / {_fmt_money(rec.get('max_deductible'))}</div>
-            <div class="exl-detail-item"><strong>Loss History:</strong> {rec.get('loss_history') or '—'}</div>
+        <div class="exl-detail-panel">
+            <div class="exl-detail-grid">
+                <div class="exl-detail-item"><strong>Named Insured:</strong> {rec.get('named_insured') or '—'}</div>
+                <div class="exl-detail-item"><strong>SIR / Excess:</strong> {_fmt_money(rec.get('sir'))} / {_fmt_money(rec.get('excess_of'))}</div>
+                <div class="exl-detail-item"><strong>Policy Period:</strong> {rec.get('effective_date') or '—'} → {rec.get('expiration_date') or '—'}</div>
+                <div class="exl-detail-item"><strong>Blanket Deductible:</strong> {_fmt_money(rec.get('blanket_deductible'))}</div>
+                <div class="exl-detail-item"><strong>Min / Max Deductible:</strong> {_fmt_money(rec.get('min_deductible'))} / {_fmt_money(rec.get('max_deductible'))}</div>
+                <div class="exl-detail-item"><strong>Loss History:</strong> {rec.get('loss_history') or '—'}</div>
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+
+@contextmanager
+def _section_box():
+    """Section card wrapper compatible with Streamlit 1.28+ (no border= arg)."""
+    with st.container():
+        st.markdown('<span class="exl-section-marker"></span>', unsafe_allow_html=True)
+        yield
 
 
 def _get_openai_key() -> str | None:
@@ -719,15 +1186,13 @@ def main() -> None:
     _inject_exl_styles()
     _render_header()
 
-    _, content, _ = st.columns([0.01, 1.0, 0.01])
-    with content:
-        hdr_l, hdr_r = st.columns([5, 1])
-        with hdr_r:
-            if st.button("Reset", key="clear", type="secondary", use_container_width=True):
-                _clear_all()
+    _, reset_col = st.columns([5, 1])
+    with reset_col:
+        if st.button("Reset", key="clear", type="secondary", use_container_width=True):
+            _clear_all()
 
-        # Step 1 — Upload
-        st.markdown('<div class="exl-section">', unsafe_allow_html=True)
+    # Step 1 — Upload
+    with _section_box():
         _render_section_header(1, "Upload Insurance Slips", "PDF · Word · Scanned Images")
 
         nonce = st.session_state.slip_upload_nonce
@@ -757,10 +1222,8 @@ def main() -> None:
                 unsafe_allow_html=True,
             )
 
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        # Step 2 — Extract
-        st.markdown('<div class="exl-section">', unsafe_allow_html=True)
+    # Step 2 — Extract
+    with _section_box():
         _render_section_header(2, "Run Extraction")
 
         run_disabled = not slips
@@ -772,24 +1235,23 @@ def main() -> None:
         )
         if run_disabled:
             st.caption("Upload at least one slip file to enable extraction.")
-        st.markdown("</div>", unsafe_allow_html=True)
 
-        if st.session_state.slip_error:
-            st.error(f"**Extraction failed:** {st.session_state.slip_error}")
-            if st.session_state.slip_traceback:
-                with st.expander("Technical details"):
-                    st.code(st.session_state.slip_traceback, language="python")
+    if st.session_state.slip_error:
+        st.error(f"**Extraction failed:** {st.session_state.slip_error}")
+        if st.session_state.slip_traceback:
+            with st.expander("Technical details"):
+                st.code(st.session_state.slip_traceback, language="python")
 
-        # Step 3 — Results
-        if st.session_state.slip_completed and st.session_state.slip_records:
-            stats = st.session_state.slip_stats
-            paths = st.session_state.slip_paths
+    # Step 3 — Results
+    if st.session_state.slip_completed and st.session_state.slip_records:
+        stats = st.session_state.slip_stats
+        paths = st.session_state.slip_paths
 
-            st.markdown('<div class="exl-section">', unsafe_allow_html=True)
+        with _section_box():
             _render_section_header(3, "Extraction Results", f"{stats.get('elapsed_sec', 0)}s processing time")
 
             st.markdown(
-                f"""<div class="exl-success-banner">
+                f"""<div class="exl-success-banner exl-animate-in">
                     <div class="exl-success-dot"></div>
                     <div class="exl-success-text">
                         <b>{stats.get('slip_count', 0)} slip(s)</b> processed successfully —
@@ -827,124 +1289,79 @@ def main() -> None:
             for idx, rec in enumerate(st.session_state.slip_records):
                 st.markdown("---")
                 st.markdown(
-                    f"""<div style="font-size:0.95rem;font-weight:700;color:{EXL_BLACK};margin-bottom:0.75rem;">
-                    {rec.get('source_file', f'Slip {idx + 1}')}</div>""",
+                    f"""<div class="exl-slip-title exl-animate-in">
+                        <span class="exl-slip-title-icon">📄</span>
+                        {rec.get('source_file', f'Slip {idx + 1}')}
+                    </div>""",
                     unsafe_allow_html=True,
                 )
                 _render_summary_metrics(rec)
+                _render_slip_tabs(rec, idx)
 
-                tabs = st.tabs([
-                    "Limits & Sublimits",
-                    "Deductibles",
-                    "Waiting Periods",
-                    "CAT Perils",
-                    "Source Text",
-                ])
+    if run and slips:
+        st.session_state.slip_completed = False
+        st.session_state.slip_error = None
+        st.session_state.slip_traceback = None
 
-                with tabs[0]:
-                    df_lim = pd.DataFrame(rec.get("limits_sublimits") or [])
-                    if not df_lim.empty:
-                        show = [c for c in ["row_type", "peril", "region", "description", "amount", "status", "basis"] if c in df_lim.columns]
-                        st.dataframe(_display_df(df_lim[show]), use_container_width=True, hide_index=True)
-                    else:
-                        st.warning("No limit or sublimit rows were extracted from this slip.")
+        openai_key = _get_openai_key()
+        t0 = time.perf_counter()
 
-                with tabs[1]:
-                    df_ded = pd.DataFrame(rec.get("deductibles") or [])
-                    if not df_ded.empty:
-                        show = [c for c in ["peril", "region", "hazard_zone", "coverage_type", "deductible_type", "amount", "pct", "min_amount", "max_amount", "basis"] if c in df_ded.columns]
-                        st.dataframe(_display_df(df_ded[show]), use_container_width=True, hide_index=True)
-                    else:
-                        st.warning("No deductible rows were extracted from this slip.")
+        with st.status("Processing slips…", expanded=True) as status:
+            try:
+                TMP_SLIPS.mkdir(parents=True, exist_ok=True)
+                OUT_SLIP.mkdir(parents=True, exist_ok=True)
 
-                with tabs[2]:
-                    df_w = pd.DataFrame(rec.get("waiting_periods") or [])
-                    if not df_w.empty:
-                        st.dataframe(_display_df(df_w), use_container_width=True, hide_index=True)
-                    else:
-                        st.caption("No waiting periods identified.")
+                slip_paths: list[Path] = []
+                for uf in slips:
+                    tp = TMP_SLIPS / uf.name
+                    tp.write_bytes(uf.getvalue())
+                    slip_paths.append(tp)
 
-                with tabs[3]:
-                    df_cat = pd.DataFrame(rec.get("cat_peril_summary") or [])
-                    if not df_cat.empty:
-                        st.dataframe(
-                            _display_df(df_cat[["peril_code", "peril_name", "primary_limit", "limit_status", "sublimit_count", "deductible_count"]]),
-                            use_container_width=True,
-                            hide_index=True,
-                        )
-                    else:
-                        st.caption("No CAT peril summary available.")
+                engine = SlipExtractionEngine(openai_key=openai_key)
+                records: list[dict[str, Any]] = []
+                for p in slip_paths:
+                    status.write(f"Analyzing **{p.name}**…")
+                    rec = engine.extract_file(p)
+                    records.append(rec)
+                    status.write(
+                        f"**{p.name}** — TIV: {_fmt_money(rec.get('tiv'))} · "
+                        f"{len(rec.get('limits_sublimits') or [])} limits · "
+                        f"{len(rec.get('deductibles') or [])} deductibles"
+                    )
 
-                with tabs[4]:
-                    preview = rec.get("raw_text_preview", "")[:2500]
-                    st.text(preview or "No source text extracted. Scanned PDFs require Tesseract OCR.")
+                stem = Path(slips[0].name).stem
+                if len(slips) > 1:
+                    stem = "batch_slips"
+                json_path = OUT_SLIP / f"{stem}_extracted.json"
+                xlsx_path = OUT_SLIP / f"{stem}_extracted.xlsx"
+                engine.save_outputs(records, json_path, xlsx_path)
 
-            st.markdown("</div>", unsafe_allow_html=True)
+                elapsed = round(time.perf_counter() - t0, 1)
+                st.session_state.slip_records = records
+                st.session_state.slip_paths = {"json": str(json_path), "xlsx": str(xlsx_path)}
+                st.session_state.slip_stats = {
+                    "slip_count": len(records),
+                    "elapsed_sec": elapsed,
+                    "total_limits": sum(len(r.get("limits_sublimits") or []) for r in records),
+                    "total_deductibles": sum(len(r.get("deductibles") or []) for r in records),
+                }
+                st.session_state.slip_completed = True
+                status.update(label="Extraction complete", state="complete")
+                st.rerun()
 
-        if run and slips:
-            st.session_state.slip_completed = False
-            st.session_state.slip_error = None
-            st.session_state.slip_traceback = None
+            except Exception as e:
+                log.exception("Slip extraction failed: %s", e)
+                st.session_state.slip_error = f"{type(e).__name__}: {e}"
+                st.session_state.slip_traceback = traceback.format_exc()
+                status.update(label="Extraction failed", state="error")
 
-            openai_key = _get_openai_key()
-            t0 = time.perf_counter()
-
-            with st.status("Processing slips…", expanded=True) as status:
-                try:
-                    TMP_SLIPS.mkdir(parents=True, exist_ok=True)
-                    OUT_SLIP.mkdir(parents=True, exist_ok=True)
-
-                    slip_paths: list[Path] = []
-                    for uf in slips:
-                        tp = TMP_SLIPS / uf.name
-                        tp.write_bytes(uf.getvalue())
-                        slip_paths.append(tp)
-
-                    engine = SlipExtractionEngine(openai_key=openai_key)
-                    records: list[dict[str, Any]] = []
-                    for p in slip_paths:
-                        status.write(f"Analyzing **{p.name}**…")
-                        rec = engine.extract_file(p)
-                        records.append(rec)
-                        status.write(
-                            f"**{p.name}** — TIV: {_fmt_money(rec.get('tiv'))} · "
-                            f"{len(rec.get('limits_sublimits') or [])} limits · "
-                            f"{len(rec.get('deductibles') or [])} deductibles"
-                        )
-
-                    stem = Path(slips[0].name).stem
-                    if len(slips) > 1:
-                        stem = "batch_slips"
-                    json_path = OUT_SLIP / f"{stem}_extracted.json"
-                    xlsx_path = OUT_SLIP / f"{stem}_extracted.xlsx"
-                    engine.save_outputs(records, json_path, xlsx_path)
-
-                    elapsed = round(time.perf_counter() - t0, 1)
-                    st.session_state.slip_records = records
-                    st.session_state.slip_paths = {"json": str(json_path), "xlsx": str(xlsx_path)}
-                    st.session_state.slip_stats = {
-                        "slip_count": len(records),
-                        "elapsed_sec": elapsed,
-                        "total_limits": sum(len(r.get("limits_sublimits") or []) for r in records),
-                        "total_deductibles": sum(len(r.get("deductibles") or []) for r in records),
-                    }
-                    st.session_state.slip_completed = True
-                    status.update(label="Extraction complete", state="complete")
-                    st.rerun()
-
-                except Exception as e:
-                    log.exception("Slip extraction failed: %s", e)
-                    st.session_state.slip_error = f"{type(e).__name__}: {e}"
-                    st.session_state.slip_traceback = traceback.format_exc()
-                    status.update(label="Extraction failed", state="error")
-
-        st.markdown(
-            f"""<div class="exl-footer">
-            &copy; 2026 <strong>EXL</strong> · SmartCAT.AI · Insurance Slip Intelligence Platform
-            <div class="exl-footer-credit">Designed &amp; developed by <b>Satyam Mishra</b></div>
-            </div>""",
-            unsafe_allow_html=True,
-        )
+    st.markdown(
+        f"""<div class="exl-footer">
+        &copy; 2026 <strong>EXL</strong> · SmartCAT.AI · Insurance Slip Intelligence Platform
+        <div class="exl-footer-credit">Designed &amp; developed by <b>Satyam Mishra</b></div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
 
 
 if __name__ == "__main__":

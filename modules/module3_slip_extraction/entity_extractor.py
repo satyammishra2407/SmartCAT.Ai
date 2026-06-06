@@ -10,6 +10,7 @@ from modules.module3_slip_extraction.table_parser import (
     build_cat_peril_summary,
     parse_deductible_rows,
     parse_limit_rows,
+    parse_prose_limits,
     parse_waiting_periods,
 )
 
@@ -19,14 +20,20 @@ def extract_from_text(text: str, source_file: str = "", extraction_method: str =
     blob = text if not sections.get("full") else sections.get("full", text)
 
     summary = _extract_summary(blob, source_file, extraction_method)
-    limits = parse_limit_rows(blob, source_file)
+    limits = parse_prose_limits(blob, source_file)
+    for row in parse_limit_rows(blob, source_file):
+        if not _duplicate_limit(row, limits):
+            limits.append(row)
     deductibles = parse_deductible_rows(blob, source_file)
     waiting = parse_waiting_periods(blob, source_file)
 
-    # Regex sublimits not caught by table parser
+    # Regex sublimits not caught by table parser (skip deductible-section false positives)
     for m in pl.SUBLIMIT_PERIL.finditer(blob):
+        context = m.group(0)
         peril = m.group(1).strip()
         val = m.group(2).strip()
+        if _skip_sublimit_regex_match(context, val):
+            continue
         if not any(r.get("description", "").startswith(peril) for r in limits):
             limits.append(
                 {
@@ -74,6 +81,38 @@ def extract_from_text(text: str, source_file: str = "", extraction_method: str =
         "waiting_periods": waiting,
         "cat_peril_summary": build_cat_peril_summary(limits, deductibles),
     }
+
+
+def _skip_sublimit_regex_match(context: str, val: str) -> bool:
+    lower = context.lower()
+    if "not otherwise excluded" in lower or "and not otherwise" in lower:
+        return True
+    if "except:" in lower or "hazard area" in lower:
+        return True
+    if val.lower() == "excluded" and "except" in lower:
+        return True
+    return False
+
+
+def _duplicate_limit(row: dict[str, Any], existing: list[dict[str, Any]]) -> bool:
+    desc = (row.get("description") or "").lower()
+    peril = (row.get("peril") or "").lower()
+    amt = row.get("amount")
+    for r in existing:
+        if (r.get("description") or "").lower() == desc:
+            return True
+        if peril and peril == (r.get("peril") or "").lower() and amt == r.get("amount"):
+            return True
+    # Drop small round amounts that are likely deductible bleed (e.g. $100k default ded)
+    if (
+        row.get("row_type") == "sublimit"
+        and amt in ("100000", "10000")
+        and "limit" not in desc
+        and "aggregate" not in desc
+        and "program" not in desc
+    ):
+        return True
+    return False
 
 
 def _clean_named_insured(raw: str) -> str | None:
