@@ -1,0 +1,11 @@
+# Force light theme on Streamlit Cloud (prevents dark upload box)
+[theme]
+base = "light"
+primaryColor = "#E84E0E"
+backgroundColor = "#F2F2F2"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#222222"
+font = "sans serif"
+
+[browser]
+gatherUsageStats = false

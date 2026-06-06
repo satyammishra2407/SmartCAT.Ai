@@ -75,6 +75,18 @@ def _inject_exl_styles() -> None:
         }}
         #MainMenu, footer {{ visibility: hidden; }}
 
+        /* Force light theme CSS vars (Streamlit Cloud dark-theme override) */
+        :root {{
+            --background-color: {EXL_GREY_BG} !important;
+            --secondary-background-color: {EXL_WHITE} !important;
+            --text-color: {EXL_BLACK} !important;
+            --primary-color: {EXL_ORANGE} !important;
+        }}
+        .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"], .main {{
+            background-color: {EXL_GREY_BG} !important;
+            color: {EXL_BLACK} !important;
+        }}
+
         html, body, [class*="css"] {{
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }}
@@ -344,30 +356,40 @@ def _inject_exl_styles() -> None:
             font-weight: 600;
         }}
 
-        /* ── File uploader dropzone ── */
+        /* ── File uploader dropzone (local + Streamlit Cloud) ── */
         div[data-testid="stFileUploader"] {{
-            background: transparent;
-            border: none;
-            padding: 0;
+            background: transparent !important;
+            border: none !important;
+            padding: 0 !important;
+        }}
+        div[data-testid="stFileUploader"] section,
+        div[data-testid="stFileUploader"] [data-testid="stFileUploadDropzone"],
+        div[data-testid="stFileUploader"] [data-testid="stFileUploadDropzone"] > div,
+        div[data-testid="stFileUploader"] [data-testid="stFileUploadDropzone"] div[data-testid="stVerticalBlock"] {{
+            background-color: {EXL_GREY_LIGHT} !important;
+            background: {EXL_GREY_LIGHT} !important;
         }}
         div[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] {{
-            background: {EXL_GREY_LIGHT} !important;
             border: 1.5px dashed {EXL_GREY_MID} !important;
             border-radius: 8px !important;
             padding: 1.75rem 1.5rem !important;
             min-height: 110px !important;
             transition: border-color 0.2s, background 0.2s !important;
         }}
-        div[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"]:hover {{
+        div[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"]:hover,
+        div[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"]:hover > div {{
             border-color: {EXL_ORANGE} !important;
+            background-color: #EFEFEF !important;
             background: #EFEFEF !important;
         }}
-        div[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] > div {{
+        div[data-testid="stFileUploader"] [data-testid="stFileUploadDropzone"] span,
+        div[data-testid="stFileUploader"] [data-testid="stFileUploadDropzone"] p,
+        div[data-testid="stFileUploader"] [data-testid="stFileUploadDropzone"] label,
+        div[data-testid="stFileUploader"] [data-testid="stFileUploadDropzone"] div {{
             color: {EXL_BLACK} !important;
         }}
         div[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] span,
         div[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] p {{
-            color: {EXL_BLACK} !important;
             font-size: 1.05rem !important;
             font-weight: 600 !important;
             line-height: 1.5 !important;
@@ -380,13 +402,18 @@ def _inject_exl_styles() -> None:
             margin-top: 6px !important;
             display: block !important;
         }}
-        div[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] svg {{
+        div[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] svg,
+        div[data-testid="stFileUploader"] [data-testid="stFileUploadDropzone"] svg {{
             stroke: {EXL_GREY_DARK} !important;
+            fill: none !important;
             width: 28px !important;
             height: 28px !important;
         }}
-        div[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] button {{
+        div[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] button,
+        div[data-testid="stFileUploader"] [data-testid="stFileUploadDropzone"] button,
+        div[data-testid="stFileUploader"] button {{
             background: {EXL_WHITE} !important;
+            background-color: {EXL_WHITE} !important;
             color: {EXL_BLACK} !important;
             border: 1.5px solid {EXL_GREY_MID} !important;
             border-radius: 6px !important;
@@ -394,10 +421,19 @@ def _inject_exl_styles() -> None:
             font-weight: 600 !important;
             padding: 0.45rem 1.1rem !important;
         }}
-        div[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] button:hover {{
+        div[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] button:hover,
+        div[data-testid="stFileUploader"] [data-testid="stFileUploadDropzone"] button:hover,
+        div[data-testid="stFileUploader"] button:hover {{
             border-color: {EXL_ORANGE} !important;
             color: {EXL_ORANGE} !important;
             background: {EXL_WHITE} !important;
+            background-color: {EXL_WHITE} !important;
+        }}
+        /* Uploaded file list row */
+        div[data-testid="stFileUploader"] [data-testid="stFileUploaderFileName"],
+        div[data-testid="stFileUploader"] [data-testid="stFileUploaderFileName"] > div {{
+            background: {EXL_WHITE} !important;
+            color: {EXL_BLACK} !important;
         }}
 
         div[data-testid="stButton"] > button[kind="primary"] {{
