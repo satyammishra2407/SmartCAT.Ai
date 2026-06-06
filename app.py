@@ -647,6 +647,16 @@ def _render_summary_metrics(rec: dict[str, Any]) -> None:
     )
 
 
+def _get_openai_key() -> str | None:
+    key = os.getenv("OPENAI_API_KEY")
+    if key:
+        return key
+    try:
+        return st.secrets["OPENAI_API_KEY"]
+    except Exception:
+        return None
+
+
 def main() -> None:
     _init_session()
     st.set_page_config(
@@ -825,7 +835,7 @@ def main() -> None:
             st.session_state.slip_error = None
             st.session_state.slip_traceback = None
 
-            openai_key = os.getenv("OPENAI_API_KEY")
+            openai_key = _get_openai_key()
             t0 = time.perf_counter()
 
             with st.status("Processing slips…", expanded=True) as status:

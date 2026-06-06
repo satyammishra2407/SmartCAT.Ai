@@ -24,24 +24,29 @@ class SlipExtractionEngine:
         if path.suffix.lower() not in SUPPORTED_SUFFIXES:
             raise ValueError(f"Unsupported file type: {path.suffix}")
 
-        full_text, method = load_document(path)
+        full_text, method = load_document(path, openai_key=self.openai_key)
         structured = extract_from_text(full_text, source_file=path.name, extraction_method=method)
 
-        if self._needs_llm(structured):
+        if self._needs_llm(structured, full_text):
             llm = extract_with_llm(full_text, self.openai_key)
             if llm:
                 structured = self._merge(structured, llm)
 
         structured["raw_text_preview"] = full_text[:3000]
+        structured["ocr_available"] = method in ("ocr_pdf", "vision_ocr")
         return structured
 
     def extract_pdf(self, pdf_path: Path) -> dict[str, Any]:
         """Backward-compatible alias."""
         return self.extract_file(pdf_path)
 
-    def _needs_llm(self, s: dict[str, Any]) -> bool:
+    def _needs_llm(self, s: dict[str, Any], text: str) -> bool:
         if not self.openai_key:
             return False
+        from modules.module3_slip_extraction.document_loader import text_is_sparse
+
+        if text_is_sparse(text):
+            return False  # vision OCR already attempted in loader
         has_tiv = bool(s.get("tiv"))
         has_limit = bool(s.get("limit_of_liability") or s.get("blanket_limit"))
         has_rows = len(s.get("limits_sublimits") or []) >= 2

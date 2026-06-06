@@ -34,7 +34,20 @@ def _configure_tesseract() -> None:
         pass
 
 
+def tesseract_available() -> bool:
+    try:
+        import pytesseract
+
+        _configure_tesseract()
+        pytesseract.get_tesseract_version()
+        return True
+    except Exception:
+        return False
+
+
 def image_to_text(image: Image.Image, lang: str = "eng") -> str:
+    if not tesseract_available():
+        return ""
     try:
         import pytesseract
 
